@@ -1,0 +1,58 @@
+==PROF== Connected to process 1899960 (/mnt/steam/volta-kernel-bakeoff/bakeoff)
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+contender,shape,N,K,M,us,weight_GBps,tflops,copies
+cublas_fp16,qwen36_expert_gate_up,512,2048,1,76.51,27.4,0.027,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,1,110.88,5.3,0.019,171
+fused_q4_v2,qwen36_expert_gate_up,512,2048,1,34.26,17.2,0.061,171
+fused_q4_v2w,qwen36_expert_gate_up,512,2048,1,34.04,17.3,0.062,171
+fused_q4,qwen36_expert_gate_up,512,2048,1,34.06,17.3,0.062,171
+==PROF== Profiling "fused_q8": 0%....50%....100% - 19 passes
+fused_q8,qwen36_expert_gate_up,512,2048,1,33.44,33.3,0.063,91
+cublas_fp16,qwen36_expert_gate_up,512,2048,2,78.64,26.7,0.053,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,2,113.15,5.2,0.037,171
+fused_q4_v2,qwen36_expert_gate_up,512,2048,2,33.96,17.4,0.124,171
+fused_q4_v2w,qwen36_expert_gate_up,512,2048,2,33.61,17.6,0.125,171
+fused_q4,qwen36_expert_gate_up,512,2048,2,33.53,17.6,0.125,171
+fused_q8,qwen36_expert_gate_up,512,2048,2,33.57,33.2,0.125,91
+cublas_fp16,qwen36_expert_gate_up,512,2048,4,79.03,26.5,0.106,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,4,111.66,5.3,0.075,171
+fused_q4_v2,qwen36_expert_gate_up,512,2048,4,34.30,17.2,0.245,171
+fused_q4_v2w,qwen36_expert_gate_up,512,2048,4,34.10,17.3,0.246,171
+fused_q4,qwen36_expert_gate_up,512,2048,4,33.79,17.5,0.248,171
+fused_q8,qwen36_expert_gate_up,512,2048,4,33.67,33.1,0.249,91
+cublas_fp16,qwen36_expert_gate_up,512,2048,8,79.11,26.5,0.212,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,8,112.27,5.3,0.149,171
+fused_q4_v2,qwen36_expert_gate_up,512,2048,8,33.94,17.4,0.494,171
+fused_q4_v2w,qwen36_expert_gate_up,512,2048,8,34.24,17.2,0.490,171
+fused_q4,qwen36_expert_gate_up,512,2048,8,33.85,17.4,0.496,171
+fused_q8,qwen36_expert_gate_up,512,2048,8,33.51,33.3,0.501,91
+cublas_fp16,qwen36_expert_gate_up,512,2048,16,78.75,26.6,0.426,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,16,111.72,5.3,0.300,171
+cublas_fp16,qwen36_expert_gate_up,512,2048,32,78.58,26.7,0.854,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,32,112.09,5.3,0.599,171
+cublas_fp16,qwen36_expert_gate_up,512,2048,64,78.68,26.7,1.706,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,64,111.92,5.3,1.199,171
+tc_q4,qwen36_expert_gate_up,512,2048,64,108.71,5.4,1.235,171
+cublas_fp16,qwen36_expert_gate_up,512,2048,128,74.90,28.0,3.584,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,128,108.24,5.4,2.480,171
+tc_q4,qwen36_expert_gate_up,512,2048,128,108.20,5.5,2.481,171
+cublas_fp16,qwen36_expert_gate_up,512,2048,256,75.20,27.9,7.139,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,256,108.09,5.5,4.967,171
+tc_q4,qwen36_expert_gate_up,512,2048,256,107.34,5.5,5.002,171
+cublas_fp16,qwen36_expert_gate_up,512,2048,512,74.94,28.0,14.329,49
+dq4+cublas,qwen36_expert_gate_up,512,2048,512,107.68,5.5,9.971,171
+tc_q4,qwen36_expert_gate_up,512,2048,512,98.82,6.0,10.866,171
+q2_alu,qwen36_expert_gate_up,512,2048,1,59.17,5.5,0.035,308
+q2_lut,qwen36_expert_gate_up,512,2048,1,51.18,6.4,0.041,308
+q2w_alu,qwen36_expert_gate_up,512,2048,1,33.36,9.8,0.063,308
+q2w_alu_v2,qwen36_expert_gate_up,512,2048,1,33.69,9.7,0.062,308
+q2w_alu_v3,qwen36_expert_gate_up,512,2048,1,33.46,9.8,0.063,308
+q2w_lut_r1_f32,qwen36_expert_gate_up,512,2048,1,33.83,9.7,0.062,308
+q2w_lut_r4_f32,qwen36_expert_gate_up,512,2048,1,33.48,9.8,0.063,308
+q2w_lut_r8_f32,qwen36_expert_gate_up,512,2048,1,35.35,9.3,0.059,308
+q2w_lut_r16_f32,qwen36_expert_gate_up,512,2048,1,46.22,7.1,0.045,308
+q2w_lut_r4_f16,qwen36_expert_gate_up,512,2048,1,33.91,9.7,0.062,308
+q2w_lut_r8_f16,qwen36_expert_gate_up,512,2048,1,35.06,9.3,0.060,308
+q2w_lut_r16_f16,qwen36_expert_gate_up,512,2048,1,49.09,6.7,0.043,308
+==PROF== Disconnected from process 1899960
+==PROF== Report: /mnt/steam/gsq-gguf/results/profile-2026-10-19/ncu/ours-fused_q8-qwen36_expert_gate_up.ncu-rep

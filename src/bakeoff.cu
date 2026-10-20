@@ -439,7 +439,9 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
 static void run_sweep(cublasHandle_t hb) {
     std::mt19937 rng(42);
     printf("contender,shape,N,K,M,us,weight_GBps,tflops,copies\n");
+    const char* only = getenv("BAKEOFF_SHAPE");   // one table only (for a profiler); the MoE part is skipped then
     for (const Shape& sh : SHAPES) {
+        if (only && strcmp(sh.name, only)) continue;
         const size_t NK = (size_t) sh.N * sh.K;
         HostQ h4 = make_weights(sh.N, sh.K, 4, rng), h8 = make_weights(sh.N, sh.K, 8, rng);
         const size_t q4b = NK / 2 + NK / GROUP * 2, q8b = NK + NK / GROUP * 2, f16b = NK * 2;
@@ -518,7 +520,7 @@ static void run_sweep(cublasHandle_t hb) {
 
     // MoE decode: E experts, one token each (Strata Coder: 10 of 256; Qwen3.6: 8 of 256)
     for (const Shape& sh : SHAPES) {
-        if (!strstr(sh.name, "expert")) continue;
+        if (only || !strstr(sh.name, "expert")) continue;
         const int E = strstr(sh.name, "flashnext") ? 10 : 8;
         const size_t NK = (size_t) sh.N * sh.K;
         HostQ h4 = make_weights(sh.N, sh.K, 4, rng);

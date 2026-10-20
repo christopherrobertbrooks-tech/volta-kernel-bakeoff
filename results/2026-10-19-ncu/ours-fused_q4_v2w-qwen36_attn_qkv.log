@@ -1,0 +1,58 @@
+==PROF== Connected to process 1899508 (/mnt/steam/volta-kernel-bakeoff/bakeoff)
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+contender,shape,N,K,M,us,weight_GBps,tflops,copies
+cublas_fp16,qwen36_attn_qkv,8192,2048,1,48.60,690.4,0.690,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,1,112.29,84.0,0.299,11
+fused_q4_v2,qwen36_attn_qkv,8192,2048,1,34.65,272.3,0.968,11
+==PROF== Profiling "fused_q4_v2w": 0%....50%....100% - 19 passes
+fused_q4_v2w,qwen36_attn_qkv,8192,2048,1,33.73,279.8,0.995,11
+fused_q4,qwen36_attn_qkv,8192,2048,1,33.08,285.3,1.014,11
+fused_q8,qwen36_attn_qkv,8192,2048,1,32.99,540.3,1.017,6
+cublas_fp16,qwen36_attn_qkv,8192,2048,2,81.51,411.7,0.823,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,2,138.65,68.1,0.484,11
+fused_q4_v2,qwen36_attn_qkv,8192,2048,2,34.96,269.9,1.920,11
+fused_q4_v2w,qwen36_attn_qkv,8192,2048,2,34.86,270.7,1.925,11
+fused_q4,qwen36_attn_qkv,8192,2048,2,34.34,274.8,1.954,11
+fused_q8,qwen36_attn_qkv,8192,2048,2,34.28,519.9,1.957,6
+cublas_fp16,qwen36_attn_qkv,8192,2048,4,79.91,419.9,1.680,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,4,138.18,68.3,0.971,11
+fused_q4_v2,qwen36_attn_qkv,8192,2048,4,35.14,268.5,3.819,11
+fused_q4_v2w,qwen36_attn_qkv,8192,2048,4,47.51,198.6,2.825,11
+fused_q4,qwen36_attn_qkv,8192,2048,4,36.07,261.7,3.722,11
+fused_q8,qwen36_attn_qkv,8192,2048,4,37.93,470.0,3.539,6
+cublas_fp16,qwen36_attn_qkv,8192,2048,8,81.26,412.9,3.303,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,8,138.59,68.1,1.937,11
+fused_q4_v2,qwen36_attn_qkv,8192,2048,8,49.62,190.2,5.409,11
+fused_q4_v2w,qwen36_attn_qkv,8192,2048,8,89.68,105.2,2.993,11
+fused_q4,qwen36_attn_qkv,8192,2048,8,56.03,168.4,4.791,11
+fused_q8,qwen36_attn_qkv,8192,2048,8,54.87,324.9,4.893,6
+cublas_fp16,qwen36_attn_qkv,8192,2048,16,80.86,415.0,6.640,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,16,139.88,67.5,3.838,11
+cublas_fp16,qwen36_attn_qkv,8192,2048,32,62.05,540.7,17.303,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,32,123.56,76.4,8.690,11
+cublas_fp16,qwen36_attn_qkv,8192,2048,64,97.44,344.3,22.038,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,64,157.16,60.0,13.664,11
+tc_q4,qwen36_attn_qkv,8192,2048,64,132.49,71.2,16.209,11
+cublas_fp16,qwen36_attn_qkv,8192,2048,128,113.21,296.4,37.937,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,128,173.59,54.4,24.742,11
+tc_q4,qwen36_attn_qkv,8192,2048,128,159.64,59.1,26.904,11
+cublas_fp16,qwen36_attn_qkv,8192,2048,256,122.63,273.6,70.045,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,256,182.64,51.7,47.032,11
+tc_q4,qwen36_attn_qkv,8192,2048,256,319.61,29.5,26.876,11
+cublas_fp16,qwen36_attn_qkv,8192,2048,512,239.19,140.3,71.826,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,512,299.05,31.6,57.448,11
+tc_q4,qwen36_attn_qkv,8192,2048,512,529.67,17.8,32.435,11
+q2_alu,qwen36_attn_qkv,8192,2048,1,61.71,85.0,0.544,20
+q2_lut,qwen36_attn_qkv,8192,2048,1,51.16,102.5,0.656,20
+q2w_alu,qwen36_attn_qkv,8192,2048,1,35.04,149.6,0.958,20
+q2w_alu_v2,qwen36_attn_qkv,8192,2048,1,34.92,150.1,0.961,20
+q2w_alu_v3,qwen36_attn_qkv,8192,2048,1,34.78,150.8,0.965,20
+q2w_lut_r1_f32,qwen36_attn_qkv,8192,2048,1,105.06,49.9,0.319,20
+q2w_lut_r4_f32,qwen36_attn_qkv,8192,2048,1,74.30,70.6,0.452,20
+q2w_lut_r8_f32,qwen36_attn_qkv,8192,2048,1,61.97,84.6,0.541,20
+q2w_lut_r16_f32,qwen36_attn_qkv,8192,2048,1,46.78,112.1,0.717,20
+q2w_lut_r4_f16,qwen36_attn_qkv,8192,2048,1,59.62,87.9,0.563,20
+q2w_lut_r8_f16,qwen36_attn_qkv,8192,2048,1,41.55,126.2,0.807,20
+q2w_lut_r16_f16,qwen36_attn_qkv,8192,2048,1,49.52,105.9,0.678,20
+==PROF== Disconnected from process 1899508
+==PROF== Report: /mnt/steam/gsq-gguf/results/profile-2026-10-19/ncu/ours-fused_q4_v2w-qwen36_attn_qkv.ncu-rep

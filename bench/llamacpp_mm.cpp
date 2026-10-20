@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <random>
 #include <vector>
@@ -40,9 +41,14 @@ int main() {
     std::mt19937 rng(42);
     std::normal_distribution<float> nd(0.f, 0.02f);
     printf("contender,shape,N,K,M,us,weight_GBps,tflops,copies\n");
+    // LLAMA_MM_SHAPE / LLAMA_MM_TYPE / LLAMA_MM_M: one shape, type or token count only (for a profiler)
+    const char* only_shape = getenv("LLAMA_MM_SHAPE"); const char* only_type = getenv("LLAMA_MM_TYPE");
+    const int only_m = getenv("LLAMA_MM_M") ? atoi(getenv("LLAMA_MM_M")) : 0;
     for (const Type& ty : TYPES) {
+        if (only_type && strcmp(ty.name, only_type)) continue;
         ggml_quantize_init(ty.t);
         for (const Shape& sh : SHAPES) {
+            if (only_shape && strcmp(sh.name, only_shape)) continue;
             if (sh.K % ggml_blck_size(ty.t) != 0) {   // e.g. Q2_K / IQ2 pack 256 values per block; a 640-wide row can't
                 fprintf(stderr, "%s: skipping %s (K %d is not a multiple of %d)\n", ty.name, sh.name, sh.K, (int) ggml_blck_size(ty.t));
                 continue;
@@ -60,6 +66,7 @@ int main() {
             }
             const int R = (int) std::min<size_t>(256, std::max<size_t>(1, (96u << 20) / wbytes + 1));
             for (int M : MS) {
+                if (only_m && M != only_m) continue;
                 ggml_init_params ip = {ggml_tensor_overhead() * (R + 8), nullptr, true};
                 ggml_context* wctx = ggml_init(ip);
                 std::vector<ggml_tensor*> W(R);

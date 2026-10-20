@@ -1,0 +1,12 @@
+llama-llama_q2_0-qwen36_attn_qkv           us=13.86 dram%=40.63 mem%=40.63 sm%=31.54 occ%=41.72 theo%=56.25 regs=56 block=(32, 4, 1) grid=(2048, 1, 1) cyc/instr=18.60 noelig%=61.95 L1hit%=92.58 L2hit%=14.39
+llama-llama_q2_0-qwen36_expert_gate_up     us=6.18 dram%=5.43 mem%=5.43 sm%=4.46 occ%=8.77 theo%=56.25 regs=56 block=(32, 4, 1) grid=(128, 1, 1) cyc/instr=24.35 noelig%=93.78 L1hit%=88.04 L2hit%=47.22
+llama-llama_q4_0-qwen36_attn_qkv           us=21.50 dram%=58.41 mem%=58.41 sm%=47.12 occ%=42.69 theo%=56.25 regs=54 block=(32, 4, 1) grid=(8192, 1, 1) cyc/instr=12.49 noelig%=49.25 L1hit%=93.56 L2hit%=10.04
+llama-llama_q4_0-qwen36_expert_gate_up     us=5.57 dram%=12.38 mem%=12.38 sm%=11.80 occ%=32.86 theo%=56.25 regs=54 block=(32, 4, 1) grid=(512, 1, 1) cyc/instr=29.73 noelig%=83.88 L1hit%=91.53 L2hit%=31.38
+llama-llama_q8_0-qwen36_attn_qkv           us=35.14 dram%=68.06 mem%=68.06 sm%=43.44 occ%=42.25 theo%=50 regs=64 block=(32, 4, 1) grid=(8192, 1, 1) cyc/instr=14.70 noelig%=55.08 L1hit%=89.03 L2hit%=8.58
+llama-llama_q8_0-qwen36_expert_gate_up     us=6.34 dram%=19.21 mem%=19.21 sm%=14.25 occ%=34.48 theo%=50 regs=64 block=(32, 4, 1) grid=(512, 1, 1) cyc/instr=28.16 noelig%=80.10 L1hit%=87.17 L2hit%=21.49
+ours-fused_q4_v2w-qwen36_attn_qkv          us=22.94 dram%=60.04 mem%=62.84 sm%=42.79 occ%=62.77 theo%=75 regs=35 block=(128, 1, 1) grid=(2048, 1, 1) cyc/instr=19.80 noelig%=49.99 L1hit%=87.21 L2hit%=6.11
+ours-fused_q4_v2w-qwen36_expert_gate_up    us=7.26 dram%=9.54 mem%=10.98 sm%=7.63 occ%=9.83 theo%=75 regs=35 block=(128, 1, 1) grid=(128, 1, 1) cyc/instr=17.08 noelig%=89.77 L1hit%=80.80 L2hit%=38.17
+ours-fused_q8-qwen36_attn_qkv              us=33.09 dram%=76.36 mem%=76.36 sm%=38.75 occ%=80.66 theo%=100 regs=32 block=(128, 1, 1) grid=(2048, 1, 1) cyc/instr=32.37 noelig%=60.06 L1hit%=65.39 L2hit%=6.25
+ours-fused_q8-qwen36_expert_gate_up        us=8.74 dram%=14.28 mem%=14.28 sm%=7.92 occ%=9.95 theo%=100 regs=32 block=(128, 1, 1) grid=(128, 1, 1) cyc/instr=16.28 noelig%=90.41 L1hit%=56.09 L2hit%=26.74
+ours-q2w_alu_v3-qwen36_attn_qkv            us=17.34 dram%=37.35 mem%=41.72 sm%=59.94 occ%=71.58 theo%=100 regs=31 block=(128, 1, 1) grid=(2048, 1, 1) cyc/instr=16.36 noelig%=31.36 L1hit%=92.24 L2hit%=19.30
+ours-q2w_alu_v3-qwen36_expert_gate_up      us=7.55 dram%=5.33 mem%=6.09 sm%=8.96 occ%=9.90 theo%=100 regs=31 block=(128, 1, 1) grid=(128, 1, 1) cyc/instr=13.59 noelig%=87.53 L1hit%=85.47 L2hit%=56.48

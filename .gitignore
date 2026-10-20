@@ -2,3 +2,4 @@ bakeoff
 llamacpp_mm
 *.o
 results/*/watch.log
+results/*/*.ncu-rep
