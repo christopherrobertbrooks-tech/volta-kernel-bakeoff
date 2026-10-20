@@ -501,6 +501,7 @@ static void run_sweep(cublasHandle_t hb) {
     std::mt19937 rng(42);
     printf("contender,shape,N,K,M,us,weight_GBps,tflops,copies\n");
     const char* only = getenv("BAKEOFF_SHAPE");   // one table only (for a profiler); the MoE part is skipped then
+    const int only_m = getenv("BAKEOFF_M") ? atoi(getenv("BAKEOFF_M")) : 0;   // one token count only (for a profiler)
     for (const Shape& sh : SHAPES) {
         if (only && strcmp(sh.name, only)) continue;
         const size_t NK = (size_t) sh.N * sh.K;
@@ -518,6 +519,7 @@ static void run_sweep(cublasHandle_t hb) {
         const int cw = copies_for(f16b);   // dq4+cublas writes and reads its fp16 copy: cycle these too
         std::vector<half*> wtmp(cw); for (auto& w : wtmp) w = dalloc<half>(NK);
         for (int M : MS) {
+            if (only_m && M != only_m) continue;
             std::vector<half> x((size_t) M * sh.K, __float2half(0.5f));
             const half* dx = dupload(x);
             float* dy = dalloc<float>((size_t) M * sh.N);

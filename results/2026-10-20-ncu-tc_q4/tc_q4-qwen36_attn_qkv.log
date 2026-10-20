@@ -1,0 +1,22 @@
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 2258908 (/mnt/steam/volta-kernel-bakeoff/bakeoff)
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+contender,shape,N,K,M,us,weight_GBps,tflops,copies
+cublas_fp16,qwen36_attn_qkv,8192,2048,512,238.65,140.6,71.987,4
+dq4+cublas,qwen36_attn_qkv,8192,2048,512,298.52,31.6,57.551,11
+==PROF== Profiling "tc_q4": 0%....50%....100% - 81 passes
+tc_q4,qwen36_attn_qkv,8192,2048,512,531.11,17.8,32.347,11
+q2_alu,qwen36_attn_qkv,8192,2048,1,61.36,85.4,0.547,20
+q2_lut,qwen36_attn_qkv,8192,2048,1,51.26,102.3,0.655,20
+q2w_alu,qwen36_attn_qkv,8192,2048,1,33.32,157.3,1.007,20
+q2w_alu_v2,qwen36_attn_qkv,8192,2048,1,33.20,157.9,1.011,20
+q2w_alu_v3,qwen36_attn_qkv,8192,2048,1,32.89,159.4,1.020,20
+q2w_lut_r1_f32,qwen36_attn_qkv,8192,2048,1,105.45,49.7,0.318,20
+q2w_lut_r4_f32,qwen36_attn_qkv,8192,2048,1,74.67,70.2,0.449,20
+q2w_lut_r8_f32,qwen36_attn_qkv,8192,2048,1,61.52,85.2,0.545,20
+q2w_lut_r16_f32,qwen36_attn_qkv,8192,2048,1,46.86,111.9,0.716,20
+q2w_lut_r4_f16,qwen36_attn_qkv,8192,2048,1,59.06,88.8,0.568,20
+q2w_lut_r8_f16,qwen36_attn_qkv,8192,2048,1,41.55,126.2,0.807,20
+q2w_lut_r16_f16,qwen36_attn_qkv,8192,2048,1,49.81,105.3,0.674,20
+==PROF== Disconnected from process 2258908
+==PROF== Report: /mnt/steam/volta-kernel-bakeoff/results/2026-10-20-ncu-tc_q4/tc_q4-qwen36_attn_qkv.ncu-rep
