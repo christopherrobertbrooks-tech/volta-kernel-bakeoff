@@ -3,7 +3,7 @@
 Our own quantized matrix-multiply kernels for the **Tesla V100** (sm_70, 2017), raced against **cuBLAS** (NVIDIA's
 fp16 tensor-core GEMM) and **llama.cpp's** own CUDA kernels, at the real table shapes of the models we run.
 
-*Work in progress. Numbers below are medians over 30 rounds (ours, cuBLAS) and 10 rounds (llama.cpp) run back to back on
+*Work in progress (stage 3 planning: see below). Numbers below are medians over 30 rounds (ours, cuBLAS) and 10 rounds (llama.cpp) run back to back on
 2026-10-19; every round is in [results/2026-10-19](results/2026-10-19), medians in
 [medians.csv](results/2026-10-19/medians.csv) ([results/summarize.py](results/summarize.py)).*
 
@@ -88,6 +88,38 @@ shows the consequence: its expert gate/up tables (rows 2,560 long, 10 blocks) ar
 IQ3_S), while its expert down tables are IQ4_NL (4.5 bits, blocks of 32) in 39 of 48 layers and Q2_0 (2.25 bits, blocks of
 64) in the other 9. Formats with 32-, 64- or 128-weight groups -- ours, and ISTA's GSQ (groups of 128; 640 = 5 x 128) --
 fit those rows.
+
+## Stage 3: what a whole model spends its time on
+
+Before putting our kernels into a real model, we profiled one: Qwen3.6-35B-A3B in llama.cpp on the V100 (Nsight
+Systems for whole tokens, Nsight Compute for single kernels). Full notes and tables: [STAGE3.md](STAGE3.md).
+
+- **llama.cpp already does what stage 1 set out to show.** On Volta it runs all of a layer's experts in one launch and
+  fuses gate + up + SwiGLU (routed and shared experts together), the router's softmax + top-k, and norm + RoPE.
+- **A written token is ~1,526 kernels, and the GPU is busy the whole time** (10.5 ms of kernels in a 10.4 ms token,
+  measured without the profiler). The multiplies are about half: the 8-bit attention and output-head tables 38%, the
+  2-bit experts 15%. The other half is ~1,200 small kernels of 3-5 us each (norms, element-wise steps, copies,
+  converting activations to 8 bits, routing).
+- **The weights are not the bottleneck.** A token reads 2.4 GB, about 3 ms at the card's speed. Halving the experts'
+  size (GSQ 2-bit vs Unsloth 4-bit) did not change writing speed (96 vs 95 tokens a second).
+- **Reading a long prompt:** the linear attention's gated-delta-net kernel takes 15% of a 4,096-token prompt, one
+  serial kernel per layer -- llama.cpp's source marks a chunked version as a TODO.
+- **Drafting is the biggest writing-speed lever on this card:** llama.cpp's MTP drafting gives +33-37% (93 -> 128
+  tokens a second), more than any kernel here could.
+
+**What we'd do next, in order:**
+
+1. **Fuse the small steps** (about half of a token): norm + 8-bit conversion, the element-wise chains around the linear
+   attention, router + reduction -- in a private llama.cpp build, measured end to end.
+2. **A chunked gated-delta-net kernel for prompt reading** (Gated DeltaNet's chunkwise form), filling llama.cpp's own
+   TODO; it matters most for long prompts (an agent's 27K-token requests).
+3. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token** (76% vs 68% of memory speed on the table family that
+   is 38% of a token): roughly 4% end to end, cheap to try.
+4. **Not worth it:** our 2-bit kernel in a model (llama.cpp's Q2_0 is faster on big tables, and experts are 15% of a
+   token), and a new engine in Python around our kernels (it would add launch cost to every one of ~1,500 kernels a
+   token, which llama.cpp's CUDA graphs avoid).
+5. **Still to measure:** Strata, which writes Qwen3.6 faster than llama.cpp on this card (~110 vs ~95 tokens a
+   second), profiled the same way -- to see what it does differently.
 
 ## Run it
 
