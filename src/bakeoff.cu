@@ -188,6 +188,7 @@ __global__ void moe_fused_q4(MoePtrs p, int N, int K) {
 #include "stage2.cuh"
 #include "stage3_lut.cuh"
 #include "stage4_tc.cuh"
+#include "stage5_gap8.cuh"
 
 // ---- host side ------------------------------------------------------------------------------------------------
 
@@ -393,7 +394,11 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 float* dy = dalloc<float>((size_t) M * sh.N);
                 std::vector<std::pair<std::string, int>> runs;
                 if (bits == 4) {
-                    if (M <= 8) { runs.push_back({"fused_q4", 0}); runs.push_back({"fused_q4_v2", 4}); runs.push_back({"fused_q4_v2w", 5}); }
+                    if (M <= 8) {
+                        runs.push_back({"fused_q4", 0}); runs.push_back({"fused_q4_v2", 4}); runs.push_back({"fused_q4_v2w", 5});
+                        runs.push_back({"fused_q4_v3", 8});
+                        for (int c = 0; c < fq3::NCFG; ++c) runs.push_back({std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]", 200 + c});
+                    }
                     if (tc_q4_ok(M, sh.N)) runs.push_back({"tc_q4", 6});
                     if (tc_q4_v2_ok(M, sh.N, sh.K)) {
                         runs.push_back({"tc_q4_v2", 7});
@@ -418,6 +423,8 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     else if (r.second == 5) fused_q4_v2_any(M, true, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second == 6) launch_tc_q4(dq4, ds, dx, dy, sh.N, sh.K, M);
                     else if (r.second == 7) launch_tc_q4_v2(dq4, ds, dx, dy, sh.N, sh.K, M);
+                    else if (r.second == 8) fused_q4_v3_any(M, dq4, ds, dx, dy, sh.N, sh.K);
+                    else if (r.second >= 200) fq3::run(r.second - 200, M, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second >= 100) tc2::CFGS[(r.second - 100) / 8].run(dq4, ds, dx, dy, sh.N, sh.K, M, 1 << ((r.second - 100) % 8));
                     else cublas_gemm(hb, dw, dx, dy, sh.N, sh.K, M);
                     CK(cudaDeviceSynchronize());
@@ -434,8 +441,10 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                         if (err > worst) { worst = err; wm = m; wn = n; }
                     }
                     // fp32 sums of fp16 inputs: ~1e-6 of the magnitude; the fp16 baseline rounds the weights once
-                    // more (2^-11): allow 2e-3 for those, 1e-4 for the kernels that use the exact codes
-                    const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas" || r.first.rfind("tc_q4", 0) == 0) ? 2e-3 : 1e-4;
+                    // more (2^-11), and fused_q4_v3 rounds its products and short partial sums to fp16: allow 2e-3
+                    // for those, 1e-4 for the kernels that use the exact codes with fp32 sums
+                    const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas" || r.first.rfind("tc_q4", 0) == 0 ||
+                                        r.first.rfind("fused_q4_v3", 0) == 0) ? 2e-3 : 1e-4;
                     const bool ok = worst <= tol;
                     failures += !ok;
                     printf("check,%s,%s,%d,%.3g,%d,%d,%s\n", r.first.c_str(), sh.name, M, worst, wm, wn,
@@ -559,6 +568,12 @@ static void run_sweep(cublasHandle_t hb) {
             if (M <= 8) {
                 report("fused_q4_v2", time_us([&](int i) { fused_q4_v2_any(M, false, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q4_v2w", time_us([&](int i) { fused_q4_v2_any(M, true, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
+                report("fused_q4_v3", time_us([&](int i) { fused_q4_v3_any(M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
+                if (getenv("FQ3_TUNE"))   // every variant, for tuning
+                    for (int c = 0; c < fq3::NCFG; ++c) {
+                        const std::string name = std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]";
+                        report(name.c_str(), time_us([&](int i) { fq3::run(c, M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
+                    }
                 report("fused_q4", time_us([&](int i) { fused_q4_any(M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q8", time_us([&](int i) { fused_q8_any(M, q8[i % c8], s8[i % c8], dx, dy, sh.N, sh.K); }), q8b, c8);
             }
