@@ -100,6 +100,17 @@ the first 150-470 characters, then splits at a near-tie (verifying two tokens at
    rebuild needs split-K or per-shape tiles there, not just 128x128 tiles. Rebuild: all threads, coalesced,
    half2 + `0x6400`, register double-buffering, tile size per shape, split-K for small tables.
    **Go / no-go (issues #1, #5):** with the clock locked and `--check` passing, the rebuilt kernel's speed relative to cuBLAS fp16, weighted by each table's share of real prompt time at 512-4,096 tokens (the big attention and output tables dominate; llama.cpp sends the experts through MMQ, not cuBLAS). Break-even is ~75%: in the 4,096-token GSQ profile cuBLAS took 850 ms and dequantizing to fp16 291 ms, and the fused kernel skips the dequantize, so it matches llama.cpp at 850 / 1,141 = 74.5% of cuBLAS. Under ~70%: drop the Marlin plan; ~85% or more: worth building into llama.cpp. The final verdict should come from an 8-bit version (`tc_q8`): the tables that dominate prompt time are 8-bit in both GSQ's and Unsloth's files. Today's unrebuilt `tc_q4` is at 43-63% per table (#5).
+   **Result (2026-10-20, `tc_q4_v2` in `src/stage4_tc.cuh`; 3 clock-locked rounds, `--check` passing, sabotage
+   caught):** below the bar. At 512 tokens on the big tables (attention q / out / qkv, MLP up / down) it runs at
+   51-62% of cuBLAS's speed, 57% weighted by time (`results/2026-10-20-tc2-default/vs-cublas.txt`), against the
+   ~70% drop line. The rebuild did fix what it was aimed at: at 64 tokens it beats cuBLAS on every big table
+   (119-147%), and at 128 it is 84-143%. So the kernel is worth having for short prompts and batches up to ~128
+   tokens, not for prompt reading at 512+. Eight tile layouts were timed with every split
+   (`results/2026-10-20-tc2-tune2`, `TC2_TUNE=1`): bigger 64x64 warp tiles hit 255 registers and spill (12-33% slower at
+   512), and the second shared-memory buffer lost every shape at 64-512 tokens, so the default is now one buffer
+   (64x64 or 128x128 blocks, 32x32 / 64x32 warps). Per the bar set beforehand, the Marlin-style llama.cpp plan is
+   dropped; a hand-written `mma.sync` m8n8k4 version (instead of WMMA) is the one lever left untried, and `tc_q8` was
+   not built since `tc_q4` already misses.
    Tracked in issue #1; the 8-token gap (83 vs 53 us) in #2; fusing the small kernels in #3.
 4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
    38% of a token -> roughly 4% end to end. Small but cheap to try.

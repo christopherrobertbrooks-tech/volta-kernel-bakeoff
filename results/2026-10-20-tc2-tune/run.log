@@ -1,0 +1,27 @@
+GPU clocks set to "(gpuClkMin 1380, gpuClkMax 1380)" for GPU 00000000:05:00.0
+
+Warning: persistence mode is disabled on device 00000000:05:00.0. See the Known Issues section of the nvidia-smi(1) man page for more information. Run with [--help | -h] switch to get more information on how to enable persistence mode.
+All done.
+2026-10-20 17:28:18 V100 SM clock locked at 1380 MHz
+2026-10-20 17:28:18 check
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+0 failure(s)
+2026-10-20 17:28:30 check PASSED (1094 ok)
+2026-10-20 17:28:30 sabotage check
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+946 failure(s) (sabotage mode: failures expected)
+2026-10-20 17:28:42 sabotage caught (946 failures, as it should)
+2026-10-20 17:28:42 sweep round 1
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-20 17:29:30 round 1 done (1066 rows)
+round 1 under load: 456 busy samples, SM clock min 1380 MHz, max 49 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-20 17:29:30 sweep round 2
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-20 17:30:18 round 2 done (1066 rows)
+round 2 under load: 456 busy samples, SM clock min 1372 MHz, max 52 C, 2 below 1380, 2 with other clock-event reasons (0x4)  ** FLAGGED **
+2026-10-20 17:30:18 sweep round 3
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-20 17:31:06 round 3 done (1066 rows)
+round 3 under load: 455 busy samples, SM clock min 1372 MHz, max 53 C, 3 below 1380, 3 with other clock-event reasons (0x4)  ** FLAGGED **
+2026-10-20 17:31:06 BAKEOFF DONE; V100 131 MiB; other users of the V100 seen: 0
+All done.

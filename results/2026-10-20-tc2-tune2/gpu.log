@@ -1,0 +1,6 @@
+2026-10-20 17:37:54 round 1 33, 1380 MHz, 45.87 W
+round 1 under load: 786 busy samples, SM clock min 1372 MHz, max 52 C, 2 below 1380, 2 with other clock-event reasons (0x4)  ** FLAGGED **
+2026-10-20 17:39:17 round 2 46, 1380 MHz, 49.83 W
+round 2 under load: 789 busy samples, SM clock min 1372 MHz, max 54 C, 3 below 1380, 3 with other clock-event reasons (0x4)  ** FLAGGED **
+2026-10-20 17:40:39 round 3 48, 1380 MHz, 50.22 W
+round 3 under load: 788 busy samples, SM clock min 1372 MHz, max 55 C, 2 below 1380, 2 with other clock-event reasons (0x4)  ** FLAGGED **
