@@ -3,7 +3,7 @@
 Our own quantized matrix-multiply kernels for the **Tesla V100** (sm_70, 2017), raced against **cuBLAS** (NVIDIA's
 fp16 tensor-core GEMM) and **llama.cpp's** own CUDA kernels, at the real table shapes of the models we run.
 
-*Work in progress (stage 3 planning: see below). Numbers below are medians over 30 rounds (ours, cuBLAS) and 10 rounds (llama.cpp) run back to back on
+*Work in progress (stage 3 planning: see below). Numbers below are medians over 30 rounds for every contender run back to back on
 2026-10-19; every round is in [results/2026-10-19](results/2026-10-19), medians in
 [medians.csv](results/2026-10-19/medians.csv) ([results/summarize.py](results/summarize.py)).*
 
@@ -46,20 +46,22 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
 | Flash-Next Coder attention 12288x2560 | 101.2 | 32.4 | 30.2 | 31.0 | **18.3** | 23.5 |
 | Qwen3.6 attention 8192x2048 | 48.8 | 20.3 | 17.8 | 19.3 | **12.1** | 14.3 |
 | Qwen3-1.7B MLP up 6144x2048 | 43.6 | 16.4 | 13.9 | 16.0 | **10.2** | 12.2 |
-| Flash-Next Coder expert 640x2560 | 10.7 | 6.8 | 6.3 | 8.8 | 7.4 | **6.2** |
-| Qwen3.6 expert 512x2048 | 9.7 | 7.1 | **5.2** | 8.2 | 7.5 | 5.5 |
-| Qwen3.6 expert down 2048x512 | 6.9 | 6.4 | 4.7 | 7.9 | 7.1 | **4.0** |
+| Flash-Next Coder expert 640x2560 | 10.7 | 6.8 | 6.3 | 8.9 | 7.4 | **6.2** |
+| Qwen3.6 expert 512x2048 | 9.7 | 7.2 | **5.2** | 8.2 | 8.1 | 5.5 |
+| Qwen3.6 expert down 2048x512 | 6.9 | 6.7 | 4.7 | 7.8 | 7.3 | **4.0** |
 
 Ours 4-bit = `fused_q4_v2w`, ours 2-bit = `q2w_alu_v3` (one fp16 scale per 32, 2.5 bits per weight). llama.cpp's Q2_0
-(one fp16 scale per 64, 2.25 bits) is the same kind of plain 2-bit format; its column is 10 rounds from a second run
-([results/2026-10-19-llama-q2_0](results/2026-10-19-llama-q2_0); its other columns agree with the first run within
-1-3%). llama.cpp's times include converting the activations to 8 bits for each multiply, as in a real model.
+(one fp16 scale per 64, 2.25 bits) is the same kind of plain 2-bit format. Every cell is a median of 30 rounds: ours and
+cuBLAS from [results/2026-10-19](results/2026-10-19), all of llama.cpp's formats from one later session,
+[results/2026-10-20-llama30](results/2026-10-20-llama30) (its medians differ from the earlier 10-round llama.cpp run
+by 0.13% typically, 8% at most, on a 7-8 us table). llama.cpp's times include converting the activations to 8 bits
+for each multiply, as in a real model.
 
-- **4-bit, one token:** ours takes 7-27% less time than llama.cpp's Q4_0 on 7 of the 9 tables, and is 3-4% slower
+- **4-bit, one token:** ours takes 7-30% less time than llama.cpp's Q4_0 on 7 of the 9 tables, and is 2.5-4% slower
   on the two with 6,144-long rows (Flash-Next attention out, Qwen3-1.7B MLP down).
-- **2-bit, one token:** ours takes 12-50% less time than llama.cpp's Q2_K, but Q2_K is a more complex format (a scale
+- **2-bit, one token:** ours takes 12-49% less time than llama.cpp's Q2_K, but Q2_K is a more complex format (a scale
   and offset per 16 weights, 256 per block). Against llama.cpp's own plain 2-bit, **Q2_0, ours loses on the big tables
-  (18-29% slower) and wins on the expert-sized ones (17-44% less time)**. Nsight Compute on the Qwen3.6 attention
+  (18-29% slower) and wins on the expert-sized ones (17-46% less time)**. Nsight Compute on the Qwen3.6 attention
   table: ours keeps the GPU's arithmetic 60% busy and its memory only 37% -- it is limited by unpacking -- while Q2_0
   converts the activations to 8-bit integers once and multiplies four weights per instruction (`dp4a`).
 - **2-bit quality, measured** (Qwen3.6-35B-A3B, WikiText-2, llama.cpp; from the gsq-gguf converter, not yet published): a plain 2-bit format with one
