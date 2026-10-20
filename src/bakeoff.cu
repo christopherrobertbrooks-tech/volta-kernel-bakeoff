@@ -382,7 +382,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 dq8 = dupload(p);
             }
             half* dw = dupload(dequant_host(h));    // the fp16 baseline's weights (rounded once to fp16)
-            for (int M : {1, 2, 4, 8, 64}) {
+            for (int M : {1, 2, 4, 8, 64, 512}) {   // 512 = the largest batch the sweep times (tc_q4, cuBLAS)
                 std::uniform_real_distribution<float> xd(-1.f, 1.f);
                 std::vector<half> x((size_t) M * sh.K);
                 for (auto& v : x) v = __float2half(xd(rng));

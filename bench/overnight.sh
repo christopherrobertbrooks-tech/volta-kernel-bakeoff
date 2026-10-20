@@ -10,7 +10,8 @@
 cd "$(dirname "$0")/.." || exit 1
 D=results/$(date +%F); mkdir -p $D; L=$D/run.log
 say() { echo "$(date '+%F %T') $*" | tee -a $L; }
-V100=$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader | awk -F', ' '$1==1{print $2}')
+V100=$(nvidia-smi --query-gpu=name,uuid --format=csv,noheader | awk -F', ' '/V100/{print $2}')
+[ -n "$V100" ] || { echo "no V100 found"; exit 1; }
 others() { nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader | grep "$V100" | grep -v " $1," ; }
 [ -n "$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader | grep "$V100")" ] && { say "refusing: the V100 is busy"; exit 1; }
 make -s bakeoff >> $L 2>&1 || { say "build FAILED"; exit 1; }
@@ -20,17 +21,20 @@ g++ -O2 -std=c++17 -I$LC/ggml/include bench/llamacpp_mm.cpp -L$LC/build-sm70/bin
 ( while sleep 10; do o=$(nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader | grep "$V100" | grep -v -E "bakeoff|llamacpp_mm"); [ -n "$o" ] && echo "$(date '+%F %T') OTHER ON V100: $o" >> $D/watch.log; done ) & W=$!
 # Lock the V100's SM clock at its maximum, 1,380 MHz, for the whole run and give it back at the end (Chris 2026-10-20,
 # after Grok's review: one start-up sample had read 1,230). A power or heat limit can still pull it down; gpu.log shows it.
-sudo -n nvidia-smi -i 1 -lgc 1380,1380 >> $L 2>&1 && say "V100 SM clock locked at 1380 MHz" || say "could not lock the clock: running unlocked"
-trap 'kill $W 2>/dev/null; sudo -n nvidia-smi -i 1 -rgc >> $L 2>&1' EXIT
-export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1
+# The card is named by its UUID everywhere (lock, reset, logging, CUDA_VISIBLE_DEVICES), the same ID the watchdog uses.
+trap 'kill $W 2>/dev/null; sudo -n nvidia-smi -i $V100 -rgc >> $L 2>&1' EXIT
+sudo -n nvidia-smi -i $V100 -lgc 1380,1380 >> $L 2>&1 || { say "could not lock the V100's clock -- stopping"; exit 1; }
+[ "$(nvidia-smi -i $V100 --query-gpu=clocks.sm --format=csv,noheader,nounits)" = 1380 ] || { say "clock lock did not take -- stopping"; exit 1; }
+say "V100 SM clock locked at 1380 MHz"
+export CUDA_VISIBLE_DEVICES=$V100
 say "check"; ./bakeoff --check > $D/check.csv 2>> $L && say "check PASSED ($(grep -c ',ok$' $D/check.csv) ok)" || { say "check FAILED: $(grep -c ',FAIL$' $D/check.csv) failures -- stopping"; exit 1; }
 say "sabotage check"; BAKEOFF_SABOTAGE=1 ./bakeoff --check > $D/check-sabotage.csv 2>> $L && { say "SABOTAGE NOT CAUGHT -- the check is broken, stopping"; exit 1; } || say "sabotage caught ($(grep -c ',FAIL$' $D/check-sabotage.csv) failures, as it should)"
 for r in $(seq 1 ${ROUNDS:-3}); do
   [ "$r" -gt 1 ] && [ "${GAP:-0}" -gt 0 ] && sleep $(( GAP * 60 ))
-  echo "$(date '+%F %T') round $r $(nvidia-smi -i 1 --query-gpu=temperature.gpu,clocks.sm,power.draw --format=csv,noheader)" >> $D/gpu.log
+  echo "$(date '+%F %T') round $r $(nvidia-smi -i $V100 --query-gpu=temperature.gpu,clocks.sm,power.draw --format=csv,noheader)" >> $D/gpu.log
   say "sweep round $r"; ./bakeoff > $D/sweep-$r.csv 2>> $L && say "round $r done ($(($(wc -l < $D/sweep-$r.csv) - 1)) rows)" || say "round $r FAILED"
 done
 for r in $(seq 1 ${LLAMA_ROUNDS:-10}); do
   say "llama.cpp round $r"; ./llamacpp_mm > $D/llama-$r.csv 2>> $L && say "llama.cpp round $r done ($(($(wc -l < $D/llama-$r.csv) - 1)) rows)" || say "llama.cpp round $r FAILED"
 done
-say "BAKEOFF DONE; V100 $(nvidia-smi -i 1 --query-gpu=memory.used --format=csv,noheader); other users of the V100 seen: $(wc -l < $D/watch.log 2>/dev/null || echo 0)"
+say "BAKEOFF DONE; V100 $(nvidia-smi -i $V100 --query-gpu=memory.used --format=csv,noheader); other users of the V100 seen: $(cat $D/watch.log 2>/dev/null | wc -l)"

@@ -3,9 +3,10 @@
 Our own quantized matrix-multiply kernels for the **Tesla V100** (sm_70, 2017), raced against **cuBLAS** (NVIDIA's
 fp16 tensor-core GEMM) and **llama.cpp's** own CUDA kernels, at the real table shapes of the models we run.
 
-*Work in progress (stage 3 planning: see below). Numbers below are medians over 30 rounds for every contender run back to back on
-2026-10-19; every round is in [results/2026-10-19](results/2026-10-19), medians in
-[medians.csv](results/2026-10-19/medians.csv) ([results/summarize.py](results/summarize.py)).*
+*Work in progress (stage 3 planning: see below). Numbers below are medians over 30 rounds of every contender -- ours,
+cuBLAS and llama.cpp -- in one session on 2026-10-20 with the SM clock locked; every round is in
+[results/2026-10-20](results/2026-10-20), medians in [medians.csv](results/2026-10-20/medians.csv)
+([results/summarize.py](results/summarize.py)).*
 
 ## Why the V100 is interesting here
 
@@ -35,27 +36,36 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
 - **Real memory reads:** the V100's L2 is 6 MB, larger than one expert, so every contender cycles through enough copies of
   its weights (>= 96 MB) that each call reads them from HBM, as in a real model.
 - **Correct before fast:** `./bakeoff --check` compares every kernel with a CPU double-precision reference of the same
-  quantized weights; `BAKEOFF_SABOTAGE=1` breaks the packing on purpose and the check must fail (it does, for every kernel).
+  quantized weights, at 1, 2, 4, 8, 64 and 512 tokens and for the ten-experts-in-one-launch kernel (each expert with
+  its own weights and token, so a wrong expert index fails too): 440 checks
+  ([check.csv](results/2026-10-20/check.csv)). `BAKEOFF_SABOTAGE=1` breaks the packed weights on purpose and the check
+  must fail: every kernel with packed 2-, 4- or 8-bit weights fails every one of its checks (328 failures,
+  [check-sabotage.csv](results/2026-10-20/check-sabotage.csv)); the two cuBLAS fp16 contenders have no packing to break
+  and pass, as a control.
+- **Same clock for everyone:** the runner locks the V100's SM clock at 1,380 MHz (`nvidia-smi -lgc`), stops if the lock
+  doesn't take, and resets it at the end; all 30 rounds read 1,380 MHz at 35-48 C ([gpu.log](results/2026-10-20/gpu.log)).
 - Each round takes the median of 5 x 50 calls after warm-up; the table reports the median round. Fastest and slowest
-  round differ by 0.9% typically. The card stayed at 34-45 C and 1,380 MHz (one start-up sample at 1,230).
+  round differ by 0.9% typically.
+- `dq4+cublas` (unpack to fp16, then cuBLAS) cycles its fp16 copies too, but each multiply still reads the copy it has
+  just written, which on an expert-sized table is still in L2 -- as it would be in a real model.
 
 ## Results (one token, microseconds, lower is better)
 
 | table | cuBLAS fp16 | llama.cpp Q4_0 | **ours 4-bit** | llama.cpp Q2_K | llama.cpp Q2_0 | **ours 2-bit** |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Flash-Next Coder attention 12288x2560 | 101.2 | 32.4 | 30.2 | 31.0 | **18.3** | 23.5 |
-| Qwen3.6 attention 8192x2048 | 48.8 | 20.3 | 17.8 | 19.3 | **12.1** | 14.3 |
-| Qwen3-1.7B MLP up 6144x2048 | 43.6 | 16.4 | 13.9 | 16.0 | **10.2** | 12.2 |
-| Flash-Next Coder expert 640x2560 | 10.7 | 6.8 | 6.3 | 8.9 | 7.4 | **6.2** |
-| Qwen3.6 expert 512x2048 | 9.7 | 7.2 | **5.2** | 8.2 | 8.1 | 5.5 |
-| Qwen3.6 expert down 2048x512 | 6.9 | 6.7 | 4.7 | 7.8 | 7.3 | **4.0** |
+| Flash-Next Coder attention 12288x2560 | 101.1 | 32.4 | 30.2 | 31.0 | **18.3** | 23.5 |
+| Qwen3.6 attention 8192x2048 | 48.8 | 20.4 | 17.8 | 19.3 | **12.1** | 14.3 |
+| Qwen3-1.7B MLP up 6144x2048 | 43.7 | 16.4 | 13.9 | 16.0 | **10.2** | 12.1 |
+| Flash-Next Coder expert 640x2560 | 10.7 | 6.8 | 6.3 | 8.9 | 7.5 | **6.2** |
+| Qwen3.6 expert 512x2048 | 9.7 | 7.2 | **5.2** | 8.2 | 8.2 | 5.5 |
+| Qwen3.6 expert down 2048x512 | 6.9 | 6.6 | 4.7 | 7.8 | 7.3 | **4.0** |
 
 Ours 4-bit = `fused_q4_v2w`, ours 2-bit = `q2w_alu_v3` (one fp16 scale per 32, 2.5 bits per weight). llama.cpp's Q2_0
-(one fp16 scale per 64, 2.25 bits) is the same kind of plain 2-bit format. Every cell is a median of 30 rounds: ours and
-cuBLAS from [results/2026-10-19](results/2026-10-19), all of llama.cpp's formats from one later session,
-[results/2026-10-20-llama30](results/2026-10-20-llama30) (its medians differ from the earlier 10-round llama.cpp run
-by 0.13% typically, 8% at most, on a 7-8 us table). llama.cpp's times include converting the activations to 8 bits
-for each multiply, as in a real model.
+(one fp16 scale per 64, 2.25 bits) is the same kind of plain 2-bit format. llama.cpp's times include converting the
+activations to 8 bits for each multiply, as in a real model. Earlier runs ([2026-10-19](results/2026-10-19), clock
+unlocked; [2026-10-20-llama30](results/2026-10-20-llama30)) agree with these medians to 0.09% typically; the
+exceptions are `dq4+cublas` on small tables (up to 40% slower now that its copies are cycled) and llama.cpp's
+IQ2_XS (~10% faster with the clock locked).
 
 - **4-bit, one token:** ours takes 7-30% less time than llama.cpp's Q4_0 on 7 of the 9 tables, and is 2.5-4% slower
   on the two with 6,144-long rows (Flash-Next attention out, Qwen3-1.7B MLP down).
@@ -68,8 +78,8 @@ for each multiply, as in a real model.
   scale per group, filled with ISTA-DASLab's GSQ weights (about the best such a format can hold), scores perplexity
   7.93; Unsloth's UD-Q2_K_XL (llama.cpp's K and IQ formats, ~2.6 bits on the experts, same file size) 7.26; its 4-bit
   UD-Q4_K_XL 6.73 (lower is better). The plain format's speed comes with a measurable quality cost.
-- Ten experts in one launch: 22 us against 56 for cuBLAS batched and 110 for ten separate cuBLAS calls (Qwen3.6's
-  eight: 12 us against 31 and 80).
+- Ten experts in one launch: 22 us against 56 for cuBLAS batched and 109 for ten separate cuBLAS calls (Qwen3.6's
+  eight: 12 us against 31 and 79).
 - **Where we lose:** 8 tokens at once (llama.cpp Q4_0 53 us vs our best, `fused_q4_v2`, 83 on the 12288x2560 table;
   `v2w` is the fastest at one token and the slowest at eight), and prompts: our first
   tensor-core kernel is 2-4x slower than cuBLAS.

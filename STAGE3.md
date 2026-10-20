@@ -93,6 +93,12 @@ the first 150-470 characters, then splits at a near-tie (verifying two tokens at
    our `tc_q4` (WMMA, 2-4x slower than cuBLAS -- needs double buffering and bigger tiles first). Muse's claim that sm_70
    is "unclaimed by construction" is too strong (llama.cpp's MMQ is tuned for Volta, ExLlama-style kernels run there),
    but a fused dequant + tensor-core prompt kernel for it is not something we've seen.
+   **Why `tc_q4` is slow** (Grok's review, 2026-10-20, confirmed in `src/stage2.cuh`): only 64 of its 128 threads
+   unpack, one row each, so their loads are not coalesced; it converts one value at a time (`__int2half_rn` +
+   `__hmul`) instead of the `0x6400` trick our 4-bit kernel uses; no register double-buffering; 64x64x32 tiles use
+   ~10 KB of the 96 KB of shared memory. **Go / no-go:** rebuild it (all threads, coalesced, half2 + `0x6400`, double
+   buffering, 128x128 tiles); if it can't reach ~70% of cuBLAS at 512 tokens, drop the Marlin-style plan.
+   Tracked in issue #1; the 8-token gap (83 vs 53 us) in #2; fusing the small kernels in #3.
 4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
    38% of a token -> roughly 4% end to end. Small but cheap to try.
 5. Not worth it: our 2-bit kernel (llama.cpp's Q2_0 beats it on big tables; experts are 15% of a token anyway), and a
