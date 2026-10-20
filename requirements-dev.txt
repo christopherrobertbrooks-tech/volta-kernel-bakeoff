@@ -1,0 +1,2 @@
+# GPU-free lint. Tests in bench/test_load_flag.py use the stdlib only.
+ruff==0.17.1
