@@ -111,6 +111,14 @@ the first 150-470 characters, then splits at a near-tie (verifying two tokens at
    (64x64 or 128x128 blocks, 32x32 / 64x32 warps). Per the bar set beforehand, the Marlin-style llama.cpp plan is
    dropped; a hand-written `mma.sync` m8n8k4 version (instead of WMMA) is the one lever left untried, and `tc_q8` was
    not built since `tc_q4` already misses.
+   **Why it misses (Nsight Compute, 512 tokens, `results/2026-10-20-ncu-tc_q4_v2`, `bench/ncu-tc2.sh`):** same
+   occupancy as cuBLAS (12.5-19%), but its tensor cores are busy 40% of the time against cuBLAS's 73-75%. Shared
+   memory is the largest single cause: WMMA's fragment loads from our padded rows (72 halves) still conflict --
+   6.3-8.4M conflict replays in 19-21M read wavefronts (cuBLAS: 0.002-0.19M of 6.4-8.7M, swizzled layouts) -- and
+   waits on shared memory (short scoreboard + MIO throttle) are 2.5-5x cuBLAS's. Close behind: barrier waits (2x) and
+   global-load waits (long scoreboard + LG throttle: each thread loads 4-byte words and their scales one by one). The
+   unpack itself is not a limit (ALU 14-26% busy). So no single fix closes the gap: the `mma.sync` version would have
+   to swizzle shared memory, widen the weight / scale loads and cut barriers together.
    Tracked in issue #1; the 8-token gap (83 vs 53 us) in #2; fusing the small kernels in #3.
 4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
    38% of a token -> roughly 4% end to end. Small but cheap to try.
