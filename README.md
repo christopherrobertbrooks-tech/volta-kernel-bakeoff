@@ -38,7 +38,9 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
 - **Correct before fast:** `./bakeoff --check` compares every kernel with a CPU double-precision reference of the same
   quantized weights, at 1, 2, 4, 8, 64 and 512 tokens and for the ten-experts-in-one-launch kernel (each expert with
   its own weights and token, so a wrong expert index fails too): 440 checks
-  ([check.csv](results/2026-10-20/check.csv)). `BAKEOFF_SABOTAGE=1` breaks the packed weights on purpose and the check
+  ([check.csv](results/2026-10-20/check.csv); both check files come from a checks-only pass of the runner right after
+  the timing session, with the build that added the 512-token checks -- the in-session check in `run.log` was 404 ok
+  and 310 sabotage failures without them). `BAKEOFF_SABOTAGE=1` breaks the packed weights on purpose and the check
   must fail: every kernel with packed 2-, 4- or 8-bit weights fails every one of its checks (328 failures,
   [check-sabotage.csv](results/2026-10-20/check-sabotage.csv)); the two cuBLAS fp16 contenders have no packing to break
   and pass, as a control.
@@ -82,7 +84,7 @@ IQ2_XS (~10% faster with the clock locked).
   eight: 12 us against 31 and 79).
 - **Where we lose:** 8 tokens at once (llama.cpp Q4_0 53 us vs our best, `fused_q4_v2`, 83 on the 12288x2560 table;
   `v2w` is the fastest at one token and the slowest at eight), and prompts: our first
-  tensor-core kernel is 2-4x slower than cuBLAS.
+  tensor-core kernel takes 1.6-2.3x cuBLAS's time at 512 tokens, and 1.1-6.5x at 64 (worst on expert-sized tables, where it launches too few blocks to fill the card and its time stays flat from 64 to 512 tokens -- issue #4).
 - **The times table loses on this card.** Against a badly built multiply kernel it looked 13-17% faster; against a good
   one it is slower everywhere -- the V100 multiplies cheaply, building and reading the table costs more.
 - **Found on the way:** a 2-bit kernel that read its activations from shared memory at a 16-float stride per lane was
@@ -129,8 +131,8 @@ Systems for whole tokens, Nsight Compute for single kernels). Full notes and tab
    multiply, instead of llama.cpp's dequantize-to-fp16-then-cuBLAS, which is 39% of reading a 4,096-token prompt.
    [Marlin](https://github.com/IST-DASLab/marlin) itself needs Ampere (`cp.async`, `ldmatrix`, the m16n8k16 MMA);
    on the V100 the asynchronous copy would be replaced by register-staged double buffering (as GEMMs did before
-   Ampere) and the MMA by Volta's own. Our first tensor-core kernel (`tc_q4`) is 2-4x slower than cuBLAS, so this
-   starts well behind; the unpacking itself (the `0x6400` trick, from FasterTransformer) is the part we already have.
+   Ampere) and the MMA by Volta's own. Our first tensor-core kernel (`tc_q4`) takes 1.6-2.3x cuBLAS's time at 512 tokens,
+   so this starts well behind (go / no-go bar: [STAGE3.md](STAGE3.md), issues #1 and #5); the unpacking itself (the `0x6400` trick, from FasterTransformer) is the part we already have.
 4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token** (76% vs 68% of memory speed on the table family that
    is 38% of a token): roughly 4% end to end, cheap to try.
 5. **Not worth it:** our 2-bit kernel in a model (llama.cpp's Q2_0 is faster on big tables, and experts are 15% of a
