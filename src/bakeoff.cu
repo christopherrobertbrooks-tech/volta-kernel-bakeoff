@@ -181,6 +181,7 @@ __global__ void moe_fused_q4(MoePtrs p, int N, int K) {
 }
 
 #include "stage2.cuh"
+#include "stage3_lut.cuh"
 
 // ---- host side ------------------------------------------------------------------------------------------------
 
@@ -400,6 +401,32 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 const bool ok = worst <= 1e-4; failures += !ok;
                 printf("check,%s,%s,1,%.3g,0,%d,%s\n", lut ? "q2_lut" : "q2_alu", sh.name, worst, wn, ok ? "ok" : "FAIL");
             }
+            {   // warp-per-row 2-bit kernels (row-major layout)
+                std::vector<uint32_t> rq; pack_q2_rowmajor(h2, sabotage, rq);
+                uint32_t* drq = dupload(rq); half* drs = dupload(h2.scale_rowmajor);
+                std::vector<std::pair<std::string, void (*)(const uint32_t*, const half*, const half*, float*, int, int)>> ks;
+                ks.push_back({"q2w_alu", launch_q2w_alu}); ks.push_back({"q2w_alu_v2", launch_q2w_alu_v2}); ks.push_back({"q2w_alu_v3", launch_q2w_alu_v3});
+                for (const auto& v : LUT_VARIANTS) ks.push_back({v.name, v.fn});
+                for (auto& kk : ks) {
+                    CK(cudaMemset(dy, 0, sh.N * sizeof(float)));
+                    kk.second(drq, drs, dx, dy, sh.N, sh.K);
+                    CK(cudaDeviceSynchronize());
+                    std::vector<float> y(sh.N); CK(cudaMemcpy(y.data(), dy, sh.N * sizeof(float), cudaMemcpyDeviceToHost));
+                    std::uniform_int_distribution<int> nd(0, sh.N - 1);
+                    double worst = 0; int wn = 0;
+                    for (int t = 0; t < 258; ++t) {
+                        const int n = t == 0 ? 0 : t == 1 ? sh.N - 1 : nd(rng);
+                        double mag; const double r = ref_q2(h2, x, n, &mag);
+                        const double err = std::fabs(y[n] - r) / (mag + 1e-12);
+                        if (err > worst) { worst = err; wn = n; }
+                    }
+                    // a half-precision table rounds each entry once (2^-11): 2e-3, like the fp16 weight baselines
+                    const double tol = kk.first.find("_f16") != std::string::npos ? 2e-3 : 1e-4;
+                    const bool ok = worst <= tol; failures += !ok;
+                    printf("check,%s,%s,1,%.3g,0,%d,%s\n", kk.first.c_str(), sh.name, worst, wn, ok ? "ok" : "FAIL");
+                }
+                CK(cudaFree(drq)); CK(cudaFree(drs));
+            }
             CK(cudaFree(dq)); CK(cudaFree(dsc)); CK(cudaFree(dx)); CK(cudaFree(dy));
         }
     }
@@ -462,6 +489,21 @@ static void run_sweep(cublasHandle_t hb) {
                 printf("%s,%s,%d,%d,1,%.2f,%.1f,%.3f,%d\n", lut ? "q2_lut" : "q2_alu", sh.name, sh.N, sh.K, us, q2b / us / 1e3,
                        2.0 * NK / us / 1e6, c2);
                 fflush(stdout);
+            }
+            {   // warp-per-row 2-bit kernels
+                std::vector<uint32_t> rq; pack_q2_rowmajor(h2, false, rq);
+                std::vector<uint32_t*> drq(c2); std::vector<half*> drs(c2);
+                for (int i = 0; i < c2; ++i) { drq[i] = dupload(rq); drs[i] = dupload(h2.scale_rowmajor); }
+                std::vector<std::pair<const char*, void (*)(const uint32_t*, const half*, const half*, float*, int, int)>> ks;
+                ks.push_back({"q2w_alu", launch_q2w_alu}); ks.push_back({"q2w_alu_v2", launch_q2w_alu_v2}); ks.push_back({"q2w_alu_v3", launch_q2w_alu_v3});
+                for (const auto& v : LUT_VARIANTS) ks.push_back({v.name, v.fn});
+                for (auto& kk : ks) {
+                    const double us = time_us([&](int i) { kk.second(drq[i % c2], drs[i % c2], dx, dy, sh.N, sh.K); });
+                    printf("%s,%s,%d,%d,1,%.2f,%.1f,%.3f,%d\n", kk.first, sh.name, sh.N, sh.K, us, q2b / us / 1e3,
+                           2.0 * NK / us / 1e6, c2);
+                    fflush(stdout);
+                }
+                for (int i = 0; i < c2; ++i) { CK(cudaFree(drq[i])); CK(cudaFree(drs[i])); }
             }
             for (int i = 0; i < c2; ++i) { CK(cudaFree(dq[i])); CK(cudaFree(dsc[i])); }
             CK(cudaFree(dx)); CK(cudaFree(dy));
