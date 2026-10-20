@@ -2,7 +2,8 @@
 // the third contender beside cuBLAS and ours. Same shapes, same token counts, same rule against the 6 MB L2: one graph
 // holds R multiplies over R different copies of the weights (>= 96 MB in total), so each reads its weights from HBM.
 // Activations are F32 (what llama.cpp feeds its kernels; it converts them to q8_1 itself). Weights are random values
-// quantized with llama.cpp's own quantizer (IQ2 types with a flat importance matrix).
+// quantized with llama.cpp's own quantizer (IQ2 types with a flat importance matrix). Q2_0 is plain 2-bit with one
+// scale per 64 -- the format GSQ's 2-bit models fit exactly (see the README).
 //
 //   g++ -O2 -std=c++17 -I<llama.cpp>/ggml/include bench/llamacpp_mm.cpp -L<build>/bin -lggml -lggml-base -lggml-cuda
 //   CUDA_VISIBLE_DEVICES=<V100> ./llamacpp_mm > llama.csv
@@ -28,7 +29,7 @@ static const Shape SHAPES[] = {
 static const int MS[] = {1, 2, 4, 8, 16, 64, 256, 512};
 struct Type { ggml_type t; const char* name; };
 static const Type TYPES[] = {
-    {GGML_TYPE_Q4_0, "llama_q4_0"}, {GGML_TYPE_Q8_0, "llama_q8_0"}, {GGML_TYPE_Q2_K, "llama_q2_k"},
+    {GGML_TYPE_Q4_0, "llama_q4_0"}, {GGML_TYPE_Q8_0, "llama_q8_0"}, {GGML_TYPE_Q2_K, "llama_q2_k"}, {GGML_TYPE_Q2_0, "llama_q2_0"},
     {GGML_TYPE_IQ2_XS, "llama_iq2_xs"}, {GGML_TYPE_IQ2_XXS, "llama_iq2_xxs"}, {GGML_TYPE_F16, "llama_f16"},
 };
 
