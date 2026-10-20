@@ -144,11 +144,14 @@ Systems for whole tokens, Nsight Compute for single kernels). Full notes and tab
 ## Run it
 
 ```
-make                                   # CUDA 12.x, sm_70
-./bakeoff --check                      # correctness (exit 1 on a failure)
+make                                   # CUDA 12.9, sm_70 (nvcc; does not run the binary)
+python3 bench/test_load_flag.py        # gpu-load sample checks, no GPU
+./bakeoff --check                      # correctness (exit 1 on a failure; needs the V100)
 ./bakeoff > sweep.csv                  # the sweep
 bench/overnight.sh                     # check, sabotage check, ROUNDS sweeps, LLAMA_ROUNDS llama.cpp sweeps
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the sample checks, ruff, and shellcheck, and compiles with the CUDA 12.9.2 devel image for sm_70. That job does not run the binary.
 
 Hardware: Tesla V100-PCIe-32GB, i7-13700KF, 16 GB RAM, Linux, CUDA 12.9, driver 580.173.02.
 

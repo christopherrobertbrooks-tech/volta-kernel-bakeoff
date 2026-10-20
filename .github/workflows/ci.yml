@@ -1,0 +1,58 @@
+# GPU-free checks. The compile uses the CUDA 12.9 line the Makefile asks for
+# (NVCC default /usr/local/cuda-12.9/bin/nvcc; README: CUDA 12.9). Image tag
+# 12.9.2-devel is the current 12.9 patch. Nothing here runs a kernel.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check
+      - run: python3 bench/test_load_flag.py
+
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (warnings and errors)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends shellcheck
+          shellcheck -S warning bench/overnight.sh bench/llama30.sh
+
+  cuda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile bakeoff for sm_70
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src nvidia/cuda:12.9.2-devel-ubuntu24.04 \
+            bash -eu -c '
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends make g++
+              if [ ! -x /usr/local/cuda-12.9/bin/nvcc ]; then
+                echo "Makefile NVCC path /usr/local/cuda-12.9/bin/nvcc is missing in this image" >&2
+                exit 1
+              fi
+              nvcc --version
+              make
+            '

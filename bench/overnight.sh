@@ -27,6 +27,7 @@ g++ -O2 -std=c++17 -I$LC/ggml/include bench/llamacpp_mm.cpp -L$LC/build-sm70/bin
 # after Grok's review: one start-up sample had read 1,230). A power or heat limit can still pull it down; gpu.log shows it.
 # The card is named by its UUID everywhere (lock, reset, logging, CUDA_VISIBLE_DEVICES), the same ID the watchdog uses.
 trap 'kill $W 2>/dev/null; sudo -n nvidia-smi -i $V100 -rgc >> $L 2>&1' EXIT
+# shellcheck disable=SC2024  # redirect stays in this shell so run.log is not created root-owned
 sudo -n nvidia-smi -i $V100 -lgc 1380,1380 >> $L 2>&1 || { say "could not lock the V100's clock -- stopping"; exit 1; }
 [ "$(nvidia-smi -i $V100 --query-gpu=clocks.sm --format=csv,noheader,nounits)" = 1380 ] || { say "clock lock did not take -- stopping"; exit 1; }
 say "V100 SM clock locked at 1380 MHz"
