@@ -81,8 +81,10 @@ the first 150-470 characters, then splits at a near-tie (verifying two tokens at
    around the linear attention, router + reduction. Each fused pair removes a 3-5 us kernel; ~1,200 of them per token.
    This is engine work inside a private llama.cpp build, measured end to end.
 2. **Prompt reading: the gated-delta-net kernel.** 15% of a long prompt in one serial kernel per layer; a chunked
-   (parallel) form of the delta rule exists in the literature and in other engines. Directly useful for Mamu-style
-   27K-token prompts.
+   (parallel) form of the delta rule exists in the literature (Gated DeltaNet's chunkwise algorithm). llama.cpp's
+   kernel (`ggml-cuda/gated_delta_net.cu`) loops over the tokens one at a time, and its launcher says
+   `//TODO: Add chunked kernel for even faster pre-fill` -- a known, open gap. Directly useful for Mamu-style
+   27K-token prompts. (Our work stays in our own repos; nothing is posted to llama.cpp.)
 3. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
    38% of a token -> roughly 4% end to end. Small but cheap to try.
 4. Not worth it: our 2-bit kernel (llama.cpp's Q2_0 beats it on big tables; experts are 15% of a token anyway), and a
