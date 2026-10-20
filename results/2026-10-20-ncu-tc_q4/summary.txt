@@ -1,0 +1,52 @@
+Issue #7, 2026-10-20 -- under-load session (results/2026-10-20-load) and Nsight Compute (this folder)
+
+1. Under-load session (main e719aca + BAKEOFF_M filter; OUT=results/2026-10-20-load ROUNDS=30 LLAMA_ROUNDS=30)
+   - check.csv: 440 ok, 0 FAIL. check-sabotage.csv: 328 FAIL; only cublas_fp16 and moe_cublas_batched pass (no packing).
+   - 60 rounds, every one with busy samples (sweep ~124, llama.cpp ~560 per round); ECC uncorrected 0 throughout.
+   - 28 of the 30 sweep rounds FLAGGED, 0 of the 30 llama.cpp rounds: the V100 touches its 250 W power cap for a
+     moment (clock-event reason 0x4 SwPowerCap; draw up to 259.6 W). 36 of 3,718 busy sweep samples (1.0%) sat below
+     1380 MHz -- 1-2 samples per flagged round -- at 1372, 1365 or 1357 MHz (at worst 1.7% slow for ~100 ms).
+   - Effect on the results: none measurable. All 964 medians vs the clean clock-locked run (results/2026-10-20, no
+     sampling): typical change 0.04%; 7 over 1%, 2 over 3%. The largest, dq4+cublas flashnext_expert_gate_up M=16
+     (32.54 -> 23.50 us), is cuBLAS picking a different algorithm in some rounds (min 21.16 / max 32.58 within this
+     session; 31.97-32.67 in the clean run), not the clock.
+   - watch.log: one "OTHER ON V100" line at 16:51:38 (566 MiB, process name [No data]) -- the second llama.cpp round 27
+     started. Round 27 matches the other 29 llama.cpp rounds (typical 0.17%; worst 7.6% on llama_q2_0
+     qwen36_expert_gate_up M=1, the noisiest cell in every run), so it reads as our own process caught before its name
+     was readable; the watchdog matches its exclusions by name.
+   - Not met from the handoff's "done when": "minimum SM clock 1380 and nothing FLAGGED" -- the card's power cap
+     (a hardware setting we don't change) briefly pulls the clock down on the heaviest sweep shapes.
+
+2. tc_q4 vs the cuBLAS fp16 GEMM at M=512 (--set full, --clock-control none, SM clock locked at 1380)
+   qwen36_attn_qkv (8192x2048):  tc_q4 525.6 us, grid 128x8 = 1,024 blocks, 2.56 waves/SM
+                                 cuBLAS 242.6 us (cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8)  -> tc_q4 2.17x
+   qwen36_expert_gate_up (512x2048): tc_q4 124.2 us, grid 8x8 = 64 blocks, 0.16 waves/SM
+                                 cuBLAS 43.9 us (volta_s884gemm_fp16_128x256_ldg8_tn)                  -> tc_q4 2.83x
+
+   | metric                         | tc_q4 attn | cuBLAS attn | tc_q4 expert |
+   | SM (compute) throughput        | 35.6%      | 62.4%       | 9.4%         |
+   | memory throughput / DRAM       | 82.5 / 11.5% | 58.7 / 25.7% | 21.7 / 2.5% |
+   | achieved / theoretical occupancy | 27.7 / 31.3% (87 regs) | 10.8 / 12.5% | 6.25 / 31.3% |
+   | issue: no eligible warp        | 63.0%      | 53.8%       | 88.0%        |
+   | global loads, excessive sectors | 37% (uncoalesced) | none flagged | 37%  |
+   | shared loads: bank conflicts   | 6.0-way, 33% of wavefronts | none on loads | 6.0-way, 33% |
+   | shared stores: bank conflicts  | 5.3-way, 50% of wavefronts | 2.3-way, 15% | 5.3-way, 50% |
+   | shared accesses, excessive wavefronts | 38% | 5%    | 38%          |
+
+   Confirms #1: uncoalesced global loads (37% excessive sectors -- the 64 unpacking threads each read one row) and
+   heavily conflicted shared memory (6-way loads, 5.3-way stores); memory pipeline 82% busy while DRAM sits at 11%, so
+   the kernel waits on L1/shared traffic, not HBM -- the missing double buffering shows as 63% of issue slots with no
+   eligible warp. The per-element unpack isn't singled out by a rule, but SM throughput is 36% against cuBLAS's 62%.
+   Confirms #4: on the expert shape only 64 blocks for 80 SMs (0.16 waves), 6.25% achieved occupancy, 88% no
+   eligible warp, scoreboard stalls on L1TEX -- latency-bound, as the flat M=64..512 times showed.
+   Tensor pipe utilization: not on this ncu's details page for sm_70 (the --set full report has no tensor-pipe metric
+   row here); SM throughput is the nearest proxy.
+
+3. cuBLAS's algorithm switches (#7's two odd timing pairs)
+   flashnext_attn_q   M=64:  cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn  174.2 us, grid 16x48x1
+                      M=128: cutlass_70_tensorop_s884gemm_f16_64x64_tn_align8         266.6 us, grid 16x24x2 (split-K 2)
+   qwen3_1p7b_mlp_up  M=128: cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn  134.8 us
+                      M=256: cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8       126.9 us, grid 16x6, 0.60 waves
+   So both jumps are cuBLAS's heuristic changing kernels: at flashnext_attn_q M=128 it moves from a WMMA 32x32 tile to
+   a split-K mma.sync 64x64 tile that is 53% slower for twice the tokens; at qwen3_1p7b_mlp_up M=256 a 128x128 tile
+   that fills only 0.6 waves still beats the M=128 WMMA kernel. The % of cuBLAS numbers in #5 inherit these choices.

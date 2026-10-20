@@ -48,6 +48,10 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
   doesn't take, and resets it at the end; all 30 rounds read 1,380 MHz at 35-48 C ([gpu.log](results/2026-10-20/gpu.log)).
 - Each round takes the median of 5 x 50 calls after warm-up; the table reports the median round. Fastest and slowest
   round differ by 0.9% typically.
+- **Under load** (issue #7, [results/2026-10-20-load](results/2026-10-20-load)): a 30 + 30-round session sampled every 100 ms
+  -- every round busy, ECC 0; on the heaviest sweep shapes the card touches its 250 W power cap for a moment (1% of
+  busy samples, at worst 1,357 MHz). Its 964 medians match the unsampled session's to 0.04% typically
+  ([summary](results/2026-10-20-ncu-tc_q4/summary.txt)).
 - `dq4+cublas` (unpack to fp16, then cuBLAS) cycles its fp16 copies too, but each multiply still reads the copy it has
   just written, which on an expert-sized table is still in L2 -- as it would be in a real model.
 
