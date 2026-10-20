@@ -86,9 +86,14 @@ IQ2_XS (~10% faster with the clock locked).
   UD-Q4_K_XL 6.73 (lower is better). The plain format's speed comes with a measurable quality cost.
 - Ten experts in one launch: 22 us against 56 for cuBLAS batched and 109 for ten separate cuBLAS calls (Qwen3.6's
   eight: 12 us against 31 and 79).
-- **Where we lose:** 8 tokens at once (llama.cpp Q4_0 53 us vs our best, `fused_q4_v2`, 83 on the 12288x2560 table;
-  `v2w` is the fastest at one token and the slowest at eight), and prompts: our first
-  tensor-core kernel takes 1.6-2.3x cuBLAS's time at 512 tokens, and 1.1-6.5x at 64 (worst on expert-sized tables, where it launches too few blocks to fill the card and its time stays flat from 64 to 512 tokens -- issue #4).
+- **A few tokens at once (issue #2):** `fused_q4_v3` ([src/stage5_gap8.cuh](src/stage5_gap8.cuh)) unpacks two codes
+  per instruction into fp16 pairs, multiplies in half2, lets one activation load serve 4 rows and splits short tables
+  across warps. At 8 tokens it takes as long as or less than llama.cpp's Q4_0 on 8 of the 9 tables (51 us vs 53 on
+  12288x2560; it was 83) and is 5% slower on Qwen3-1.7B MLP down; at 1 and 2 tokens it wins on all 9 (5 clock-locked
+  rounds, [results/2026-10-20-fq3-default](results/2026-10-20-fq3-default)). It rounds its products to fp16, so it
+  is checked like cuBLAS fp16 (2e-3; worst seen 1.2e-4). The table above still shows the older `v2w`.
+- **Where we lose:** prompts. The rebuilt tensor-core kernel (`tc_q4_v2`) runs at 51-62% of cuBLAS's speed at 512
+  tokens on the big tables (see [STAGE3.md](STAGE3.md)); it beats cuBLAS up to ~128 tokens.
 - **The times table loses on this card.** Against a badly built multiply kernel it looked 13-17% faster; against a good
   one it is slower everywhere -- the V100 multiplies cheaply, building and reading the table costs more.
 - **Found on the way:** a 2-bit kernel that read its activations from shared memory at a 16-float stride per lane was
