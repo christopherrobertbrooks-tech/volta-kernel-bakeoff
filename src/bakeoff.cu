@@ -71,7 +71,8 @@ __global__ void fused_q4(const uint32_t* __restrict__ q, const half* __restrict_
                          float* __restrict__ y, int N, int K) {
     const int row = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     const int lane = threadIdx.x & 31;
-    if (row >= N) return;
+    if (row >= N) return;   // row is per warp (blockDim is a multiple of 32), so a warp leaves whole and the
+                            // full-mask shuffles below always see all 32 lanes
     const uint32_t* qr = q + (size_t) row * (K / 8);
     const half* sr = s + (size_t) row * (K / GROUP);
     float acc[M];
@@ -115,7 +116,8 @@ __global__ void fused_q8(const uint2* __restrict__ q, const half* __restrict__ s
                          float* __restrict__ y, int N, int K) {
     const int row = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     const int lane = threadIdx.x & 31;
-    if (row >= N) return;
+    if (row >= N) return;   // row is per warp (blockDim is a multiple of 32), so a warp leaves whole and the
+                            // full-mask shuffles below always see all 32 lanes
     const uint2* qr = q + (size_t) row * (K / 8);
     const half* sr = s + (size_t) row * (K / GROUP);
     float acc[M];
@@ -156,7 +158,8 @@ __global__ void moe_fused_q4(MoePtrs p, int N, int K) {
     const int e = blockIdx.y;
     const int row = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     const int lane = threadIdx.x & 31;
-    if (row >= N) return;
+    if (row >= N) return;   // row is per warp (blockDim is a multiple of 32), so a warp leaves whole and the
+                            // full-mask shuffles below always see all 32 lanes
     const uint32_t* qr = p.q[e] + (size_t) row * (K / 8);
     const half* sr = p.s[e] + (size_t) row * (K / GROUP);
     const half* x = p.x[e];
@@ -308,6 +311,59 @@ static int copies_for(size_t bytes) { return (int) std::max<size_t>(1, (96u << 2
 
 // ---- correctness ----------------------------------------------------------------------------------------------
 
+// The MoE contenders: E experts, each with its own weights and its own token, in one launch (ours) and in one cuBLAS
+// batched call, against the CPU reference per expert. Different weights per expert also catch a wrong expert index.
+static int run_check_moe(cublasHandle_t hb, bool sabotage, std::mt19937& rng) {
+    int failures = 0;
+    for (const Shape& sh : SHAPES) {
+        if (!strstr(sh.name, "expert")) continue;
+        const int E = strstr(sh.name, "flashnext") ? 10 : 8;
+        std::vector<HostQ> h; std::vector<std::vector<half>> x(E);
+        std::vector<uint32_t*> dq(E); std::vector<const half*> ds(E); std::vector<half*> dw(E), dxs(E);
+        std::uniform_real_distribution<float> xd(-1.f, 1.f);
+        for (int e = 0; e < E; ++e) {
+            h.push_back(make_weights(sh.N, sh.K, 4, rng));
+            dq[e] = dupload(pack_q4(h[e], sabotage)); ds[e] = dupload(h[e].scale); dw[e] = dupload(dequant_host(h[e]));
+            x[e].resize(sh.K); for (auto& v : x[e]) v = __float2half(xd(rng));
+            dxs[e] = dupload(x[e]);
+        }
+        float* dy = dalloc<float>((size_t) E * sh.N);
+        const float one = 1.f, zero = 0.f;
+        std::vector<const void*> a(E), b(E); std::vector<void*> c(E);
+        for (int e = 0; e < E; ++e) { a[e] = dw[e]; b[e] = dxs[e]; c[e] = dy + (size_t) e * sh.N; }
+        const void** A = (const void**) dupload(a); const void** B = (const void**) dupload(b); void** C = (void**) dupload(c);
+        for (int who = 0; who < 2; ++who) {
+            CK(cudaMemset(dy, 0, (size_t) E * sh.N * sizeof(float)));
+            if (who == 0) {
+                MoePtrs p{};
+                for (int e = 0; e < E; ++e) { p.q[e] = dq[e]; p.s[e] = ds[e]; p.x[e] = dxs[e]; p.y[e] = dy + (size_t) e * sh.N; }
+                moe_fused_q4<<<dim3((sh.N + 3) / 4, E), 128>>>(p, sh.N, sh.K);
+            } else {
+                CB(cublasGemmBatchedEx(hb, CUBLAS_OP_T, CUBLAS_OP_N, sh.N, 1, sh.K, &one, A, CUDA_R_16F, sh.K, B, CUDA_R_16F,
+                                       sh.K, &zero, C, CUDA_R_32F, sh.N, E, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+            }
+            CK(cudaDeviceSynchronize());
+            std::vector<float> y((size_t) E * sh.N);
+            CK(cudaMemcpy(y.data(), dy, y.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            std::uniform_int_distribution<int> nd(0, sh.N - 1);
+            double worst = 0; int we = 0, wn = 0;
+            for (int e = 0; e < E; ++e)
+                for (int t = 0; t < 34; ++t) {
+                    const int n = t == 0 ? 0 : t == 1 ? sh.N - 1 : nd(rng);
+                    const double err = std::fabs(y[(size_t) e * sh.N + n] - ref_value(h[e], x[e], 0, n)) / (ref_scale(h[e], x[e], 0, n) + 1e-12);
+                    if (err > worst) { worst = err; we = e; wn = n; }
+                }
+            const char* name = who == 0 ? "moe_fused_q4_one_launch" : "moe_cublas_batched";
+            const double tol = who == 0 ? 1e-4 : 2e-3;   // cuBLAS uses the fp16-rounded weights
+            const bool ok = worst <= tol; failures += !ok;
+            printf("check,%s,%s_x%d,1,%.3g,%d,%d,%s\n", name, sh.name, E, worst, we, wn, ok ? "ok" : "FAIL");
+        }
+        for (int e = 0; e < E; ++e) { CK(cudaFree(dq[e])); CK(cudaFree((void*) ds[e])); CK(cudaFree(dw[e])); CK(cudaFree(dxs[e])); }
+        CK(cudaFree((void*) A)); CK(cudaFree((void*) B)); CK(cudaFree(C)); CK(cudaFree(dy));
+    }
+    return failures;
+}
+
 static int run_check(cublasHandle_t hb, bool sabotage) {
     std::mt19937 rng(1234);
     int failures = 0;
@@ -319,12 +375,14 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
             uint32_t* dq4 = nullptr; uint2* dq8 = nullptr;
             if (bits == 4) dq4 = dupload(pack_q4(h, sabotage));
             else {
+                std::vector<int8_t> c8 = h.code;    // int8 codes go in as they are; sabotage swaps every pair
+                if (sabotage) for (size_t i = 0; i + 1 < c8.size(); i += 2) std::swap(c8[i], c8[i + 1]);
                 std::vector<uint2> p((size_t) sh.N * sh.K / 8);
-                memcpy(p.data(), h.code.data(), h.code.size());
+                memcpy(p.data(), c8.data(), c8.size());
                 dq8 = dupload(p);
             }
             half* dw = dupload(dequant_host(h));    // the fp16 baseline's weights (rounded once to fp16)
-            for (int M : {1, 4, 8, 64}) {
+            for (int M : {1, 2, 4, 8, 64}) {
                 std::uniform_real_distribution<float> xd(-1.f, 1.f);
                 std::vector<half> x((size_t) M * sh.K);
                 for (auto& v : x) v = __float2half(xd(rng));
@@ -430,6 +488,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
             CK(cudaFree(dq)); CK(cudaFree(dsc)); CK(cudaFree(dx)); CK(cudaFree(dy));
         }
     }
+    failures += run_check_moe(hb, sabotage, rng);
     fprintf(stderr, "%d failure(s)%s\n", failures, sabotage ? " (sabotage mode: failures expected)" : "");
     return failures ? 1 : 0;
 }
@@ -454,7 +513,8 @@ static void run_sweep(cublasHandle_t hb) {
         for (int i = 0; i < c4; ++i) { q4[i] = dupload(p4); s4[i] = dupload(h4.scale); }
         for (int i = 0; i < c8; ++i) { q8[i] = dupload(p8); s8[i] = dupload(h8.scale); }
         for (int i = 0; i < cf; ++i) wf[i] = dupload(w16);
-        half* wtmp = dalloc<half>(NK);
+        const int cw = copies_for(f16b);   // dq4+cublas writes and reads its fp16 copy: cycle these too
+        std::vector<half*> wtmp(cw); for (auto& w : wtmp) w = dalloc<half>(NK);
         for (int M : MS) {
             std::vector<half> x((size_t) M * sh.K, __float2half(0.5f));
             const half* dx = dupload(x);
@@ -467,8 +527,8 @@ static void run_sweep(cublasHandle_t hb) {
             };
             report("cublas_fp16", time_us([&](int i) { cublas_gemm(hb, wf[i % cf], dx, dy, sh.N, sh.K, M); }), f16b, cf);
             report("dq4+cublas", time_us([&](int i) {
-                dequant_q4<<<(int) ((NK / 8 + 255) / 256), 256>>>(q4[i % c4], s4[i % c4], wtmp, sh.N, sh.K);
-                cublas_gemm(hb, wtmp, dx, dy, sh.N, sh.K, M); }), q4b, c4);
+                dequant_q4<<<(int) ((NK / 8 + 255) / 256), 256>>>(q4[i % c4], s4[i % c4], wtmp[i % cw], sh.N, sh.K);
+                cublas_gemm(hb, wtmp[i % cw], dx, dy, sh.N, sh.K, M); }), q4b, c4);
             if (tc_q4_ok(M, sh.N))
                 report("tc_q4", time_us([&](int i) { launch_tc_q4(q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K, M); }), q4b, c4);
             if (M <= 8) {
@@ -515,7 +575,7 @@ static void run_sweep(cublasHandle_t hb) {
         for (auto p : q8) CK(cudaFree(p));
         for (auto p : s8) CK(cudaFree((void*) p));
         for (auto p : wf) CK(cudaFree(p));
-        CK(cudaFree(wtmp));
+        for (auto w : wtmp) CK(cudaFree(w));
     }
 
     // MoE decode: E experts, one token each (Strata Coder: 10 of 256; Qwen3.6: 8 of 256)

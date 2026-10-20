@@ -5,6 +5,7 @@
 #  3. the sweep, ROUNDS rounds (default 3) GAP minutes apart (default 0) -> results/<date>/sweep-<n>.csv,
 #     with the V100's temperature and SM clock logged before each round (gpu.log)
 #  4. llama.cpp's own kernels at the same shapes (bench/llamacpp_mm.cpp), LLAMA_ROUNDS rounds (default 10) -> llama-<n>.csv
+#  The SM clock is locked at 1,380 MHz for the run (nvidia-smi -lgc) and reset at the end (-rgc).
 #  A watchdog logs any other process on the V100 every 10 s (watch.log); summary.py marks rounds it overlapped.
 cd "$(dirname "$0")/.." || exit 1
 D=results/$(date +%F); mkdir -p $D; L=$D/run.log
@@ -17,7 +18,10 @@ LC=${LLAMA_CPP:-$HOME/llama.cpp-mainline}
 g++ -O2 -std=c++17 -I$LC/ggml/include bench/llamacpp_mm.cpp -L$LC/build-sm70/bin -lggml -lggml-base -lggml-cuda \
   -Wl,-rpath,$LC/build-sm70/bin -o llamacpp_mm >> $L 2>&1 || { say "llamacpp_mm build FAILED"; exit 1; }
 ( while sleep 10; do o=$(nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader | grep "$V100" | grep -v -E "bakeoff|llamacpp_mm"); [ -n "$o" ] && echo "$(date '+%F %T') OTHER ON V100: $o" >> $D/watch.log; done ) & W=$!
-trap 'kill $W 2>/dev/null' EXIT
+# Lock the V100's SM clock at its maximum, 1,380 MHz, for the whole run and give it back at the end (Chris 2026-10-20,
+# after Grok's review: one start-up sample had read 1,230). A power or heat limit can still pull it down; gpu.log shows it.
+sudo -n nvidia-smi -i 1 -lgc 1380,1380 >> $L 2>&1 && say "V100 SM clock locked at 1380 MHz" || say "could not lock the clock: running unlocked"
+trap 'kill $W 2>/dev/null; sudo -n nvidia-smi -i 1 -rgc >> $L 2>&1' EXIT
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1
 say "check"; ./bakeoff --check > $D/check.csv 2>> $L && say "check PASSED ($(grep -c ',ok$' $D/check.csv) ok)" || { say "check FAILED: $(grep -c ',FAIL$' $D/check.csv) failures -- stopping"; exit 1; }
 say "sabotage check"; BAKEOFF_SABOTAGE=1 ./bakeoff --check > $D/check-sabotage.csv 2>> $L && { say "SABOTAGE NOT CAUGHT -- the check is broken, stopping"; exit 1; } || say "sabotage caught ($(grep -c ',FAIL$' $D/check-sabotage.csv) failures, as it should)"
