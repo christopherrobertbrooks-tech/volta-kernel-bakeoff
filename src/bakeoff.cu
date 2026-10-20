@@ -393,7 +393,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 std::vector<std::pair<std::string, int>> runs;
                 if (bits == 4) {
                     if (M <= 8) { runs.push_back({"fused_q4", 0}); runs.push_back({"fused_q4_v2", 4}); runs.push_back({"fused_q4_v2w", 5}); }
-                    if (tc_q4_ok(M, sh.N)) runs.push_back({"tc_q4", 6});
+                    if (tc_q4_ok(M, sh.N)) { runs.push_back({"tc_q4", 6}); runs.push_back({"tc_q4_v1", 7}); }
                     runs.push_back({"dq4+cublas", 1});
                 }
                 else if (M <= 8) runs.push_back({"fused_q8", 2});
@@ -409,6 +409,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     else if (r.second == 4) fused_q4_v2_any(M, false, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second == 5) fused_q4_v2_any(M, true, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second == 6) launch_tc_q4(dq4, ds, dx, dy, sh.N, sh.K, M);
+                    else if (r.second == 7) launch_tc_q4_v1(dq4, ds, dx, dy, sh.N, sh.K, M);
                     else cublas_gemm(hb, dw, dx, dy, sh.N, sh.K, M);
                     CK(cudaDeviceSynchronize());
                     std::vector<float> y((size_t) M * sh.N);
@@ -425,7 +426,8 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     }
                     // fp32 sums of fp16 inputs: ~1e-6 of the magnitude; the fp16 baseline rounds the weights once
                     // more (2^-11): allow 2e-3 for those, 1e-4 for the kernels that use the exact codes
-                    const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas" || r.first == "tc_q4") ? 2e-3 : 1e-4;
+                    const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas" || r.first == "tc_q4" ||
+                                        r.first == "tc_q4_v1") ? 2e-3 : 1e-4;
                     const bool ok = worst <= tol;
                     failures += !ok;
                     printf("check,%s,%s,%d,%.3g,%d,%d,%s\n", r.first.c_str(), sh.name, M, worst, wm, wn,
@@ -531,8 +533,10 @@ static void run_sweep(cublasHandle_t hb) {
             report("dq4+cublas", time_us([&](int i) {
                 dequant_q4<<<(int) ((NK / 8 + 255) / 256), 256>>>(q4[i % c4], s4[i % c4], wtmp[i % cw], sh.N, sh.K);
                 cublas_gemm(hb, wtmp[i % cw], dx, dy, sh.N, sh.K, M); }), q4b, c4);
-            if (tc_q4_ok(M, sh.N))
+            if (tc_q4_ok(M, sh.N)) {
                 report("tc_q4", time_us([&](int i) { launch_tc_q4(q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K, M); }), q4b, c4);
+                report("tc_q4_v1", time_us([&](int i) { launch_tc_q4_v1(q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K, M); }), q4b, c4);
+            }
             if (M <= 8) {
                 report("fused_q4_v2", time_us([&](int i) { fused_q4_v2_any(M, false, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q4_v2w", time_us([&](int i) { fused_q4_v2_any(M, true, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
