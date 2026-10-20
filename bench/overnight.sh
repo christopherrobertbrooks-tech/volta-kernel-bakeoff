@@ -6,9 +6,10 @@
 #     with the V100's temperature and SM clock logged before each round (gpu.log)
 #  4. llama.cpp's own kernels at the same shapes (bench/llamacpp_mm.cpp), LLAMA_ROUNDS rounds (default 10) -> llama-<n>.csv
 #  The SM clock is locked at 1,380 MHz for the run (nvidia-smi -lgc) and reset at the end (-rgc).
-#  While each round runs, the card is sampled every 100 ms (gpu-load-<round>.csv: SM/memory clock, power, temperature,
-#  utilization, clock-event reasons, ECC); a round with the GPU busy below 1380 MHz or with any clock-event reason
-#  other than idle / the clock setting itself is flagged in run.log (Grok, issue #7).
+#  While each round runs, the card is sampled every 100 ms (gpu-load-<round>.csv: SM/memory clock, power,
+#  temperature, utilization, clock-event reasons, volatile uncorrected ECC). bench/load_flag.py flags the round in
+#  run.log when a busy sample leaves 1380 MHz or shows a clock-event reason other than idle / the clock setting,
+#  when uncorrected ECC is nonzero or rises, or when the file has no usable busy sample (Grok, issue #7).
 #  A watchdog logs any other process on the V100 every 10 s (watch.log); summary.py marks rounds it overlapped.
 cd "$(dirname "$0")/.." || exit 1
 D=${OUT:-results/$(date +%F)}; mkdir -p $D; L=$D/run.log   # OUT=dir to write elsewhere (tests)
@@ -32,8 +33,9 @@ say "V100 SM clock locked at 1380 MHz"
 export CUDA_VISIBLE_DEVICES=$V100
 say "check"; ./bakeoff --check > $D/check.csv 2>> $L && say "check PASSED ($(grep -c ',ok$' $D/check.csv) ok)" || { say "check FAILED: $(grep -c ',FAIL$' $D/check.csv) failures -- stopping"; exit 1; }
 say "sabotage check"; BAKEOFF_SABOTAGE=1 ./bakeoff --check > $D/check-sabotage.csv 2>> $L && { say "SABOTAGE NOT CAUGHT -- the check is broken, stopping"; exit 1; } || say "sabotage caught ($(grep -c ',FAIL$' $D/check-sabotage.csv) failures, as it should)"
-# sample the V100 every 100 ms while a round runs; then flag the round if, while busy, the SM clock left 1380 MHz or a
-# clock-event reason other than idle (0x1) or the applications/locked clock setting (0x2) was active
+# sample the V100 every 100 ms while a round runs. load_flag.py then flags the round if a busy sample left 1380 MHz
+# or showed a clock-event reason other than idle (0x1) or the locked clock (0x2), if volatile uncorrected ECC was
+# nonzero or rose, or if the csv has no usable busy sample (empty, unparsed, or utilization never above 0).
 sample_start() { nvidia-smi -i $V100 --query-gpu=timestamp,clocks.sm,clocks.mem,power.draw,temperature.gpu,utilization.gpu,clocks_event_reasons.active,ecc.errors.uncorrected.volatile.total --format=csv,noheader -lms 100 > $D/gpu-load-$1.csv 2>/dev/null & S=$!; }
 sample_stop() {
   kill $S 2>/dev/null; wait $S 2>/dev/null
