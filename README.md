@@ -3,7 +3,9 @@
 Our own quantized matrix-multiply kernels for the **Tesla V100** (sm_70, 2017), raced against **cuBLAS** (NVIDIA's
 fp16 tensor-core GEMM) and **llama.cpp's** own CUDA kernels, at the real table shapes of the models we run.
 
-*Work in progress -- results below are from single sweeps; the 30-round run's medians replace them when it's in.*
+*Work in progress. Numbers below are medians over 30 rounds (ours, cuBLAS) and 10 rounds (llama.cpp) run back to back on
+2026-10-19; every round is in [results/2026-10-19](results/2026-10-19), medians in
+[medians.csv](results/2026-10-19/medians.csv) ([results/summarize.py](results/summarize.py)).*
 
 ## Why the V100 is interesting here
 
@@ -34,28 +36,47 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
   its weights (>= 96 MB) that each call reads them from HBM, as in a real model.
 - **Correct before fast:** `./bakeoff --check` compares every kernel with a CPU double-precision reference of the same
   quantized weights; `BAKEOFF_SABOTAGE=1` breaks the packing on purpose and the check must fail (it does, for every kernel).
-- Median of 5 x 50 calls after warm-up; 30 back-to-back rounds agree to 0.2% (worst 4%). The card stayed at 31-45 C and
-  1,380 MHz.
+- Each round takes the median of 5 x 50 calls after warm-up; the table reports the median round. Fastest and slowest
+  round differ by 0.9% typically. The card stayed at 31-45 C and 1,380 MHz.
 
-## First results (one token, microseconds, lower is better)
+## Results (one token, microseconds, lower is better)
 
 | table | cuBLAS fp16 | llama.cpp Q4_0 | **ours 4-bit** | llama.cpp Q2_K | **ours 2-bit** |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Flash-Next Coder attention 12288x2560 | 101.3 | 32.4 | 30.1 | 31.0 | **23.4** |
-| Qwen3.6 attention 8192x2048 | 48.7 | 20.4 | 17.7 | 19.3 | **14.2** |
-| Qwen3-1.7B MLP up 6144x2048 | 43.9 | 16.4 | 13.9 | 16.0 | **12.2** |
-| Flash-Next Coder expert 640x2560 | 10.9 | 7.5 | 6.5 | 8.8 | **6.2** |
+| Flash-Next Coder attention 12288x2560 | 101.2 | 32.4 | 30.2 | 31.0 | **23.5** |
+| Qwen3.6 attention 8192x2048 | 48.8 | 20.3 | 17.8 | 19.3 | **14.3** |
+| Qwen3-1.7B MLP up 6144x2048 | 43.6 | 16.4 | 13.9 | 16.0 | **12.2** |
+| Flash-Next Coder expert 640x2560 | 10.7 | 6.8 | 6.3 | 8.8 | **6.2** |
+| Qwen3.6 expert 512x2048 | 9.7 | 7.1 | **5.2** | 8.2 | 5.5 |
+| Qwen3.6 expert down 2048x512 | 6.9 | 6.4 | 4.7 | 7.9 | **4.0** |
+
+Ours 4-bit = `fused_q4_v2w`, ours 2-bit = `q2w_alu_v3`.
 
 - One token: our 4-bit kernel is 5-15% ahead of llama.cpp's Q4_0 on most tables, our 2-bit up to 30% ahead of its
   fastest 2-bit. Our 2-bit format is simpler (one scale per 32, no codebook), so part of that is less work per weight;
   llama.cpp's IQ2 formats keep more of a model's quality.
-- Ten experts in one launch: 22 us against 56 for cuBLAS batched and 109 for ten separate cuBLAS calls.
-- **Where we lose:** 8 tokens at once (llama.cpp Q4_0 53 us vs ours 83 on the 12288x2560 table), and prompts: our first
+- Ten experts in one launch: 22 us against 56 for cuBLAS batched and 110 for ten separate cuBLAS calls (Qwen3.6's
+  eight: 12 us against 31 and 80).
+- **Where we lose:** 8 tokens at once (llama.cpp Q4_0 53 us vs our best, `fused_q4_v2`, 83 on the 12288x2560 table;
+  `v2w` is the fastest at one token and the slowest at eight), and prompts: our first
   tensor-core kernel is 2-4x slower than cuBLAS.
 - **The times table loses on this card.** Against a badly built multiply kernel it looked 13-17% faster; against a good
   one it is slower everywhere -- the V100 multiplies cheaply, building and reading the table costs more.
 - **Found on the way:** a 2-bit kernel that read its activations from shared memory at a 16-float stride per lane was
-  slower than 4-bit (bank conflicts); reading them from global memory made it 1.9x faster.
+  slower than 4-bit (bank conflicts); reading them from global memory made it 1.9x faster. Even so, our best 2-bit run
+  moves about 420 GB/s of the card's ~900, and a single expert (60-100 GB/s) is too small to keep the card busy, so
+  there is speed left.
+
+## Why llama.cpp's 2-bit can't do every table
+
+llama.cpp's 2-bit formats (Q2_K, IQ2_*) pack 256 weights per block, so a table whose rows are not a multiple of 256
+long can't use them -- our harness skips those (`K is not a multiple of 256`). Flash-Next's expert "down" tables have
+rows 640 long (2.5 blocks). The published Strata Coder file
+([ISTA-DASLab Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF))
+shows the consequence: its expert gate/up tables (rows 2,560 long, 10 blocks) are stored at 2-3 bits (IQ2_S, IQ3_XXS,
+IQ3_S), while its expert down tables are IQ4_NL (4.5 bits, blocks of 32) in 39 of 48 layers and Q2_0 (2.25 bits, blocks of
+64) in the other 9. Formats with 32-, 64- or 128-weight groups -- ours, and ISTA's GSQ (groups of 128; 640 = 5 x 128) --
+fit those rows.
 
 ## Run it
 
