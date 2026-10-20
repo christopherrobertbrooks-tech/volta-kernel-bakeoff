@@ -113,12 +113,18 @@ Systems for whole tokens, Nsight Compute for single kernels). Full notes and tab
    attention, router + reduction -- in a private llama.cpp build, measured end to end.
 2. **A chunked gated-delta-net kernel for prompt reading** (Gated DeltaNet's chunkwise form), filling llama.cpp's own
    TODO; it matters most for long prompts (an agent's 27K-token requests).
-3. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token** (76% vs 68% of memory speed on the table family that
+3. **A Marlin-style prompt kernel for Volta** (hardest of the list): unpack quantized weights inside a tensor-core
+   multiply, instead of llama.cpp's dequantize-to-fp16-then-cuBLAS, which is 39% of reading a 4,096-token prompt.
+   [Marlin](https://github.com/IST-DASLab/marlin) itself needs Ampere (`cp.async`, `ldmatrix`, the m16n8k16 MMA);
+   on the V100 the asynchronous copy would be replaced by register-staged double buffering (as GEMMs did before
+   Ampere) and the MMA by Volta's own. Our first tensor-core kernel (`tc_q4`) is 2-4x slower than cuBLAS, so this
+   starts well behind; the unpacking itself (the `0x6400` trick, from FasterTransformer) is the part we already have.
+4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token** (76% vs 68% of memory speed on the table family that
    is 38% of a token): roughly 4% end to end, cheap to try.
-4. **Not worth it:** our 2-bit kernel in a model (llama.cpp's Q2_0 is faster on big tables, and experts are 15% of a
+5. **Not worth it:** our 2-bit kernel in a model (llama.cpp's Q2_0 is faster on big tables, and experts are 15% of a
    token), and a new engine in Python around our kernels (it would add launch cost to every one of ~1,500 kernels a
    token, which llama.cpp's CUDA graphs avoid).
-5. **Still to measure:** Strata, which writes Qwen3.6 faster than llama.cpp on this card (~110 vs ~95 tokens a
+6. **Still to measure:** Strata, which writes Qwen3.6 faster than llama.cpp on this card (~110 vs ~95 tokens a
    second), profiled the same way -- to see what it does differently.
 
 ## Run it

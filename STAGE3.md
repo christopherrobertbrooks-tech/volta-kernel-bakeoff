@@ -85,9 +85,17 @@ the first 150-470 characters, then splits at a near-tie (verifying two tokens at
    kernel (`ggml-cuda/gated_delta_net.cu`) loops over the tokens one at a time, and its launcher says
    `//TODO: Add chunked kernel for even faster pre-fill` -- a known, open gap. Directly useful for Mamu-style
    27K-token prompts. (Our work stays in our own repos; nothing is posted to llama.cpp.)
-3. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
+3. **A Marlin-style prompt kernel for Volta** (added 2026-10-19 after Muse's note; hardest of the list). Prompt
+   reading spends 39% of its time dequantizing the 8-bit tables to fp16 and multiplying with cuBLAS. A kernel that
+   unpacks inside the tensor-core multiply avoids writing and re-reading the fp16 copy. Marlin (IST-DASLab) does this
+   on Ampere+ only: `cp.async` (Ampere), `ldmatrix` (Turing+), m16n8k16 MMA (Ampere). On sm_70 the async copy becomes
+   register-staged double buffering, as Volta GEMMs did, and the MMA Volta's m8n8k4 / WMMA 16x16x16. Starting point:
+   our `tc_q4` (WMMA, 2-4x slower than cuBLAS -- needs double buffering and bigger tiles first). Muse's claim that sm_70
+   is "unclaimed by construction" is too strong (llama.cpp's MMQ is tuned for Volta, ExLlama-style kernels run there),
+   but a fused dequant + tensor-core prompt kernel for it is not something we've seen.
+4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
    38% of a token -> roughly 4% end to end. Small but cheap to try.
-4. Not worth it: our 2-bit kernel (llama.cpp's Q2_0 beats it on big tables; experts are 15% of a token anyway), and a
+5. Not worth it: our 2-bit kernel (llama.cpp's Q2_0 beats it on big tables; experts are 15% of a token anyway), and a
    Python engine (see below).
 
 ## Options considered before the profile
