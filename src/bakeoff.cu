@@ -397,7 +397,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     if (tc_q4_ok(M, sh.N)) runs.push_back({"tc_q4", 6});
                     if (tc_q4_v2_ok(M, sh.N, sh.K)) {
                         runs.push_back({"tc_q4_v2", 7});
-                        for (int c = 0; c < 4; ++c)          // every tile shape and K split the tuning sweep can time
+                        for (int c = 0; c < tc2::NCFG; ++c)  // every tile shape and K split the tuning sweep can time
                             for (int si = 0; si <= 4 && (sh.K / tc2::BK) % (1 << si) == 0; ++si)
                                 if (tc2::CFGS[c].fits(M, sh.N))
                                     runs.push_back({std::string("tc_q4_v2[") + tc2::CFGS[c].name + "/s" + std::to_string(1 << si) + "]", 100 + 8 * c + si});
