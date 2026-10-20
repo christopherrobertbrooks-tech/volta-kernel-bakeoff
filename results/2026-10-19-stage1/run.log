@@ -1,0 +1,18 @@
+2026-10-19 19:13:35 check
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+0 failure(s)
+2026-10-19 19:13:37 check PASSED (162 ok)
+2026-10-19 19:13:37 sabotage check
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+63 failure(s) (sabotage mode: failures expected)
+2026-10-19 19:13:40 sabotage caught (63 failures, as it should)
+2026-10-19 19:13:40 sweep round 1
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:13:48 round 1 done (268 rows)
+2026-10-19 19:13:48 sweep round 2
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:13:55 round 2 done (268 rows)
+2026-10-19 19:13:55 sweep round 3
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:14:03 round 3 done (268 rows)
+2026-10-19 19:14:03 BAKEOFF DONE; V100 11 MiB; other users of the V100 seen: 0

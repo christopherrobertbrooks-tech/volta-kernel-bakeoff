@@ -1,0 +1,10 @@
+==PROF== Connected to process 1900074 (/mnt/steam/volta-kernel-bakeoff/llamacpp_mm)
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 32494 MiB):
+  Device 0: Tesla V100-PCIE-32GB, compute capability 7.0, VMM: yes, VRAM: 32494 MiB
+backend: CUDA0
+==PROF== Profiling "mul_mat_vec_q": 0%....50%....100% - 19 passes
+ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+contender,shape,N,K,M,us,weight_GBps,tflops,copies
+llama_q4_0,qwen36_expert_gate_up,512,2048,1,64.26,9.2,0.033,171
+==PROF== Disconnected from process 1900074
+==PROF== Report: /mnt/steam/gsq-gguf/results/profile-2026-10-19/ncu/llama-llama_q4_0-qwen36_expert_gate_up.ncu-rep

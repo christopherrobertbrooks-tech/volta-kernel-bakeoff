@@ -1,0 +1,99 @@
+2026-10-19 19:44:50 check
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+0 failure(s)
+2026-10-19 19:44:53 check PASSED (243 ok)
+2026-10-19 19:44:53 sabotage check
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+144 failure(s) (sabotage mode: failures expected)
+2026-10-19 19:44:56 sabotage caught (144 failures, as it should)
+2026-10-19 19:44:56 sweep round 1
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:45:08 round 1 done (394 rows)
+2026-10-19 19:45:08 sweep round 2
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:45:19 round 2 done (394 rows)
+2026-10-19 19:45:19 sweep round 3
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:45:31 round 3 done (394 rows)
+2026-10-19 19:45:31 sweep round 4
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:45:42 round 4 done (394 rows)
+2026-10-19 19:45:42 sweep round 5
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:45:53 round 5 done (394 rows)
+2026-10-19 19:45:53 sweep round 6
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:46:05 round 6 done (394 rows)
+2026-10-19 19:46:05 sweep round 7
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:46:16 round 7 done (394 rows)
+2026-10-19 19:46:16 sweep round 8
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:46:28 round 8 done (394 rows)
+2026-10-19 19:46:28 sweep round 9
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:46:39 round 9 done (394 rows)
+2026-10-19 19:46:39 sweep round 10
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:46:50 round 10 done (394 rows)
+2026-10-19 19:46:51 sweep round 11
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:47:02 round 11 done (394 rows)
+2026-10-19 19:47:02 sweep round 12
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:47:13 round 12 done (394 rows)
+2026-10-19 19:47:13 sweep round 13
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:47:25 round 13 done (394 rows)
+2026-10-19 19:47:25 sweep round 14
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:47:36 round 14 done (394 rows)
+2026-10-19 19:47:36 sweep round 15
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:47:48 round 15 done (394 rows)
+2026-10-19 19:47:48 sweep round 16
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:47:59 round 16 done (394 rows)
+2026-10-19 19:47:59 sweep round 17
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:48:11 round 17 done (394 rows)
+2026-10-19 19:48:11 sweep round 18
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:48:22 round 18 done (394 rows)
+2026-10-19 19:48:22 sweep round 19
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:48:33 round 19 done (394 rows)
+2026-10-19 19:48:33 sweep round 20
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:48:45 round 20 done (394 rows)
+2026-10-19 19:48:45 sweep round 21
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:48:56 round 21 done (394 rows)
+2026-10-19 19:48:56 sweep round 22
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:49:08 round 22 done (394 rows)
+2026-10-19 19:49:08 sweep round 23
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:49:19 round 23 done (394 rows)
+2026-10-19 19:49:19 sweep round 24
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:49:30 round 24 done (394 rows)
+2026-10-19 19:49:30 sweep round 25
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:49:42 round 25 done (394 rows)
+2026-10-19 19:49:42 sweep round 26
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:49:53 round 26 done (394 rows)
+2026-10-19 19:49:53 sweep round 27
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:50:05 round 27 done (394 rows)
+2026-10-19 19:50:05 sweep round 28
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:50:16 round 28 done (394 rows)
+2026-10-19 19:50:16 sweep round 29
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:50:28 round 29 done (394 rows)
+2026-10-19 19:50:28 sweep round 30
+device: Tesla V100-PCIE-32GB (sm_70), L2 6 MB
+2026-10-19 19:50:39 round 30 done (394 rows)
+2026-10-19 19:50:39 BAKEOFF DONE; V100 11 MiB; other users of the V100 seen: 0
