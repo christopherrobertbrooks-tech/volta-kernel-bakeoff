@@ -38,7 +38,57 @@ attention's recurrent kernel (30 layers), full attention, the many small element
 between kernels. A profile of 64 written tokens (nsys, CUDA graphs traced per kernel) is queued to run after the
 overnight benchmarks: `gsq-gguf/scripts/profile-decode.sh`.
 
-## Options, depending on the profile
+## The profiles (2026-10-19 night)
+
+**Writing one token** (Nsight Systems, 64 tokens, CUDA graphs traced per kernel; GSQ 2-bit, Unsloth 4-bit the same
+within 2%): llama.cpp runs **~1,526 kernels per token** and the GPU is busy the whole time -- 10.5 ms of kernels for
+a 10.4 ms token measured without the profiler (the traced run's "idle" is the profiler's own overhead).
+
+| per written token (GSQ 2-bit) | ms | share | kernels | avg |
+| --- | ---: | ---: | ---: | ---: |
+| matvec Q8_0 (attention, linear attention, output head) | 4.06 | 38% | 211 | 19 us |
+| matvec Q2_0 (routed experts, gate+up fused / down) | 1.57 | 15% | 80 | 20 us |
+| norms | 0.83 | 8% | 191 | 4.3 us |
+| element-wise (add, mul, glu, scale, ...) | 0.80 | 8% | 282 | 2.8 us |
+| copies / set_rows / get_rows | 0.78 | 7% | 151 | 5.2 us |
+| converting activations to 8 bits (q8_1) | 0.77 | 7% | 291 | 2.6 us |
+| matvec f32 (router, small tables) | 0.77 | 7% | 140 | 5.5 us |
+| router top-k, MoE reduction | 0.52 | 5% | 80 | |
+| attention + linear attention + conv + rope | 0.64 | 6% | 100 | |
+
+So **about half of a token is ~1,200 small kernels of 3-5 us**, each far too short to use the card. At 32K tokens of
+context only flash attention grows (0.30 -> 1.18 ms); writing drops from 96 to 87 tokens a second.
+
+**Reading a 4,096-token prompt:** the 8-bit attention tables are dequantized to fp16 for every chunk and multiplied
+by cuBLAS (39% together); **the linear attention's gated-delta-net kernel takes 7 ms per layer per 4,096 tokens (15%,
+one kernel per layer -- it walks the tokens one by one)**; the experts' MMQ 10%; large copies 9%.
+
+**Our kernels up close** (Nsight Compute, Qwen3.6 attention table 8192x2048, one token; clocks held at base by the
+profiler, so times are longer than in the race): our 8-bit kernel reaches 76% of memory speed (llama.cpp's Q8_0 68%);
+our 4-bit 60% (llama.cpp's Q4_0 58%); our 2-bit 37% with arithmetic 60% busy -- unpacking-bound -- against 41% for
+llama.cpp's Q2_0, which converts activations to int8 once and uses `dp4a`. On a single 512x2048 expert every kernel is
+at 5-19% of memory speed with ~90% of the card idle.
+
+**Drafting** (llama.cpp `--spec-type draft-mtp`, 3 prompts x 2, 256 tokens, temperature 0): GSQ 2-bit 93 -> 128
+tokens a second with 1 draft token (79% accepted; the MTP layer is borrowed from Unsloth's file and works as well as
+in Unsloth's own, 78%), Unsloth 4-bit 92 -> 122 (126 with 3 draft tokens). Greedy text matches the no-draft text for
+the first 150-470 characters, then splits at a near-tie (verifying two tokens at once rounds slightly differently).
+**The biggest writing-speed lever on this card is not a kernel: it is drafting, +33-37%.**
+
+## Recommendation for stage 3
+
+1. **Fuse the small steps** (best lever, ~half of a token): e.g. norm + convert-to-8-bit, the element-wise chains
+   around the linear attention, router + reduction. Each fused pair removes a 3-5 us kernel; ~1,200 of them per token.
+   This is engine work inside a private llama.cpp build, measured end to end.
+2. **Prompt reading: the gated-delta-net kernel.** 15% of a long prompt in one serial kernel per layer; a chunked
+   (parallel) form of the delta rule exists in the literature and in other engines. Directly useful for Mamu-style
+   27K-token prompts.
+3. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
+   38% of a token -> roughly 4% end to end. Small but cheap to try.
+4. Not worth it: our 2-bit kernel (llama.cpp's Q2_0 beats it on big tables; experts are 15% of a token anyway), and a
+   Python engine (see below).
+
+## Options considered before the profile
 
 1. **Swap our kernels into a private llama.cpp build** for the tables they win (8-bit attention, the output head,
    4-bit / 2-bit experts at one token) and measure the whole model before and after. Same engine, only the kernel
