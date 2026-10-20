@@ -1,4 +1,4 @@
-// volta-kernel-bakeoff, stage 1: quantized matrix multiply on a Tesla V100 (sm_70), raced against cuBLAS.
+// volta-kernel-bakeoff, stages 1-2 (stage 2: src/stage2.cuh): quantized matrix multiply on a Tesla V100 (sm_70), raced against cuBLAS.
 //
 //   y[M][N] = x[M][K] . W[N][K]^T        x: fp16 activations (M tokens), W: weights, y: fp32
 //
@@ -180,6 +180,8 @@ __global__ void moe_fused_q4(MoePtrs p, int N, int K) {
     if (lane == 0) p.y[e][row] = acc;
 }
 
+#include "stage2.cuh"
+
 // ---- host side ------------------------------------------------------------------------------------------------
 
 struct HostQ {             // one quantized matrix, kept on the host for the reference
@@ -328,7 +330,11 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 const half* dx = dupload(x);
                 float* dy = dalloc<float>((size_t) M * sh.N);
                 std::vector<std::pair<std::string, int>> runs;
-                if (bits == 4) { if (M <= 8) runs.push_back({"fused_q4", 0}); runs.push_back({"dq4+cublas", 1}); }
+                if (bits == 4) {
+                    if (M <= 8) { runs.push_back({"fused_q4", 0}); runs.push_back({"fused_q4_v2", 4}); runs.push_back({"fused_q4_v2w", 5}); }
+                    if (tc_q4_ok(M, sh.N)) runs.push_back({"tc_q4", 6});
+                    runs.push_back({"dq4+cublas", 1});
+                }
                 else if (M <= 8) runs.push_back({"fused_q8", 2});
                 runs.push_back({"cublas_fp16", 3});
                 half* dwq = (bits == 4) ? dalloc<half>((size_t) sh.N * sh.K) : nullptr;
@@ -339,6 +345,9 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                         dequant_q4<<<(int) (((size_t) sh.N * sh.K / 8 + 255) / 256), 256>>>(dq4, ds, dwq, sh.N, sh.K);
                         cublas_gemm(hb, dwq, dx, dy, sh.N, sh.K, M);
                     } else if (r.second == 2) fused_q8_any(M, dq8, ds, dx, dy, sh.N, sh.K);
+                    else if (r.second == 4) fused_q4_v2_any(M, false, dq4, ds, dx, dy, sh.N, sh.K);
+                    else if (r.second == 5) fused_q4_v2_any(M, true, dq4, ds, dx, dy, sh.N, sh.K);
+                    else if (r.second == 6) launch_tc_q4(dq4, ds, dx, dy, sh.N, sh.K, M);
                     else cublas_gemm(hb, dw, dx, dy, sh.N, sh.K, M);
                     CK(cudaDeviceSynchronize());
                     std::vector<float> y((size_t) M * sh.N);
@@ -355,7 +364,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     }
                     // fp32 sums of fp16 inputs: ~1e-6 of the magnitude; the fp16 baseline rounds the weights once
                     // more (2^-11): allow 2e-3 for those, 1e-4 for the kernels that use the exact codes
-                    const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas") ? 2e-3 : 1e-4;
+                    const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas" || r.first == "tc_q4") ? 2e-3 : 1e-4;
                     const bool ok = worst <= tol;
                     failures += !ok;
                     printf("check,%s,%s,%d,%.3g,%d,%d,%s\n", r.first.c_str(), sh.name, M, worst, wm, wn,
@@ -367,6 +376,31 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
             if (dq4) CK(cudaFree(dq4));
             if (dq8) CK(cudaFree(dq8));
             CK(cudaFree((void*) ds)); CK(cudaFree(dw));
+        }
+        {   // 2-bit, one token: q2_alu and q2_lut against the reference
+            HostQ2 h2 = make_q2(sh.N, sh.K, rng);
+            std::vector<uint2> pq; std::vector<half> ps; pack_q2(h2, sabotage, pq, ps);
+            uint2* dq = dupload(pq); half* dsc = dupload(ps);
+            std::uniform_real_distribution<float> xd(-1.f, 1.f);
+            std::vector<half> x(sh.K); for (auto& v : x) v = __float2half(xd(rng));
+            half* dx = dupload(x); float* dy = dalloc<float>(sh.N);
+            for (int lut = 0; lut < 2; ++lut) {
+                CK(cudaMemset(dy, 0, sh.N * sizeof(float)));
+                launch_q2(lut, dq, dsc, dx, dy, sh.N, sh.K);
+                CK(cudaDeviceSynchronize());
+                std::vector<float> y(sh.N); CK(cudaMemcpy(y.data(), dy, sh.N * sizeof(float), cudaMemcpyDeviceToHost));
+                std::uniform_int_distribution<int> nd(0, sh.N - 1);
+                double worst = 0; int wn = 0;
+                for (int t = 0; t < 258; ++t) {
+                    const int n = t == 0 ? 0 : t == 1 ? sh.N - 1 : nd(rng);
+                    double mag; const double r = ref_q2(h2, x, n, &mag);
+                    const double err = std::fabs(y[n] - r) / (mag + 1e-12);
+                    if (err > worst) { worst = err; wn = n; }
+                }
+                const bool ok = worst <= 1e-4; failures += !ok;
+                printf("check,%s,%s,1,%.3g,0,%d,%s\n", lut ? "q2_lut" : "q2_alu", sh.name, worst, wn, ok ? "ok" : "FAIL");
+            }
+            CK(cudaFree(dq)); CK(cudaFree(dsc)); CK(cudaFree(dx)); CK(cudaFree(dy));
         }
     }
     fprintf(stderr, "%d failure(s)%s\n", failures, sabotage ? " (sabotage mode: failures expected)" : "");
@@ -406,11 +440,31 @@ static void run_sweep(cublasHandle_t hb) {
             report("dq4+cublas", time_us([&](int i) {
                 dequant_q4<<<(int) ((NK / 8 + 255) / 256), 256>>>(q4[i % c4], s4[i % c4], wtmp, sh.N, sh.K);
                 cublas_gemm(hb, wtmp, dx, dy, sh.N, sh.K, M); }), q4b, c4);
+            if (tc_q4_ok(M, sh.N))
+                report("tc_q4", time_us([&](int i) { launch_tc_q4(q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K, M); }), q4b, c4);
             if (M <= 8) {
+                report("fused_q4_v2", time_us([&](int i) { fused_q4_v2_any(M, false, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
+                report("fused_q4_v2w", time_us([&](int i) { fused_q4_v2_any(M, true, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q4", time_us([&](int i) { fused_q4_any(M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q8", time_us([&](int i) { fused_q8_any(M, q8[i % c8], s8[i % c8], dx, dy, sh.N, sh.K); }), q8b, c8);
             }
             CK(cudaFree((void*) dx)); CK(cudaFree(dy));
+        }
+        {   // 2-bit, one token
+            HostQ2 h2 = make_q2(sh.N, sh.K, rng);
+            std::vector<uint2> pq; std::vector<half> ps; pack_q2(h2, false, pq, ps);
+            const size_t q2b = NK / 4 + NK / GROUP * 2; const int c2 = copies_for(q2b);
+            std::vector<uint2*> dq(c2); std::vector<half*> dsc(c2);
+            for (int i = 0; i < c2; ++i) { dq[i] = dupload(pq); dsc[i] = dupload(ps); }
+            std::vector<half> x(sh.K, __float2half(0.5f)); half* dx = dupload(x); float* dy = dalloc<float>(sh.N);
+            for (int lut = 0; lut < 2; ++lut) {
+                const double us = time_us([&](int i) { launch_q2(lut, dq[i % c2], dsc[i % c2], dx, dy, sh.N, sh.K); });
+                printf("%s,%s,%d,%d,1,%.2f,%.1f,%.3f,%d\n", lut ? "q2_lut" : "q2_alu", sh.name, sh.N, sh.K, us, q2b / us / 1e3,
+                       2.0 * NK / us / 1e6, c2);
+                fflush(stdout);
+            }
+            for (int i = 0; i < c2; ++i) { CK(cudaFree(dq[i])); CK(cudaFree(dsc[i])); }
+            CK(cudaFree(dx)); CK(cudaFree(dy));
         }
         for (auto p : q4) CK(cudaFree(p));
         for (auto p : s4) CK(cudaFree((void*) p));
