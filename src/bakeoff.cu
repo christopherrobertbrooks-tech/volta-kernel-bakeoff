@@ -18,7 +18,9 @@
 // a real model. Median of 5 batches of 50 calls, after 20 warm-up calls.
 //
 // Correctness (--check): every contender against a CPU double-precision reference of the same quantized weights, on
-// sampled outputs; BAKEOFF_SABOTAGE=1 swaps the two nibbles of every q4 byte so the check must fail (proves it can).
+// sampled outputs. BAKEOFF_SABOTAGE=1 breaks every packed format so the check must fail (proves it can): q4 swaps the two
+// nibbles of every byte (all q4 kernels, dq4+cublas, tc_q4, the MoE one-launch), q8 swaps every pair of int8 codes, q2
+// swaps the two codes of every pair; cuBLAS fp16 has no packing and passes as the control.
 //
 //   nvcc -O3 -arch=sm_70 -lcublas -o bakeoff src/bakeoff.cu
 //   ./bakeoff --check            correctness, exit 1 on a failure

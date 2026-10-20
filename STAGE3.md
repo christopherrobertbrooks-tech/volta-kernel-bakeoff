@@ -90,14 +90,16 @@ the first 150-470 characters, then splits at a near-tie (verifying two tokens at
    unpacks inside the tensor-core multiply avoids writing and re-reading the fp16 copy. Marlin (IST-DASLab) does this
    on Ampere+ only: `cp.async` (Ampere), `ldmatrix` (Turing+), m16n8k16 MMA (Ampere). On sm_70 the async copy becomes
    register-staged double buffering, as Volta GEMMs did, and the MMA Volta's m8n8k4 / WMMA 16x16x16. Starting point:
-   our `tc_q4` (WMMA, 2-4x slower than cuBLAS -- needs double buffering and bigger tiles first). Muse's claim that sm_70
+   our `tc_q4` (WMMA; takes 1.6-2.3x cuBLAS's time at 512 tokens, and 1.1-6.5x at 64 (worst on expert-sized tables, where it launches too few blocks to fill the card and its time stays flat from 64 to 512 tokens -- issue #4)). Muse's claim that sm_70
    is "unclaimed by construction" is too strong (llama.cpp's MMQ is tuned for Volta, ExLlama-style kernels run there),
    but a fused dequant + tensor-core prompt kernel for it is not something we've seen.
    **Why `tc_q4` is slow** (Grok's review, 2026-10-20, confirmed in `src/stage2.cuh`): only 64 of its 128 threads
    unpack, one row each, so their loads are not coalesced; it converts one value at a time (`__int2half_rn` +
    `__hmul`) instead of the `0x6400` trick our 4-bit kernel uses; no register double-buffering; 64x64x32 tiles use
-   ~10 KB of the 96 KB of shared memory. **Go / no-go:** rebuild it (all threads, coalesced, half2 + `0x6400`, double
-   buffering, 128x128 tiles); if it can't reach ~70% of cuBLAS at 512 tokens, drop the Marlin-style plan.
+   ~10 KB of the 96 KB of shared memory; and on expert-sized tables it launches only 8-80 blocks (issue #4), so the
+   rebuild needs split-K or per-shape tiles there, not just 128x128 tiles. Rebuild: all threads, coalesced,
+   half2 + `0x6400`, register double-buffering, tile size per shape, split-K for small tables.
+   **Go / no-go (issues #1, #5):** with the clock locked and `--check` passing, the rebuilt kernel's speed relative to cuBLAS fp16, weighted by each table's share of real prompt time at 512-4,096 tokens (the big attention and output tables dominate; llama.cpp sends the experts through MMQ, not cuBLAS). Break-even is ~75%: in the 4,096-token GSQ profile cuBLAS took 850 ms and dequantizing to fp16 291 ms, and the fused kernel skips the dequantize, so it matches llama.cpp at 850 / 1,141 = 74.5% of cuBLAS. Under ~70%: drop the Marlin plan; ~85% or more: worth building into llama.cpp. The final verdict should come from an 8-bit version (`tc_q8`): the tables that dominate prompt time are 8-bit in both GSQ's and Unsloth's files. Today's unrebuilt `tc_q4` is at 43-63% per table (#5).
    Tracked in issue #1; the 8-token gap (83 vs 53 us) in #2; fusing the small kernels in #3.
 4. **Our 8-bit kernel in place of llama.cpp's Q8_0 at one token**: 76% vs 68% of memory speed on the table that is
    38% of a token -> roughly 4% end to end. Small but cheap to try.
