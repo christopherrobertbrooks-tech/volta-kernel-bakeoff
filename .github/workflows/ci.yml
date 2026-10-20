@@ -1,6 +1,8 @@
 # GPU-free checks. The compile uses the CUDA 12.9 line the Makefile asks for
-# (NVCC default /usr/local/cuda-12.9/bin/nvcc; README: CUDA 12.9). Image tag
-# 12.9.2-devel is the current 12.9 patch. Nothing here runs a kernel.
+# (NVCC default /usr/local/cuda-12.9/bin/nvcc; README: CUDA 12.9). The full
+# devel image does not fit on a standard hosted runner, so the job installs
+# nvcc, the runtime headers, and cuBLAS from the 12.9 apt packages instead.
+# Nothing here runs a kernel.
 name: ci
 
 on:
@@ -18,7 +20,7 @@ jobs:
   python:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -31,7 +33,7 @@ jobs:
   shell:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: shellcheck (warnings and errors)
         run: |
           sudo apt-get update -qq
@@ -42,17 +44,41 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Compile bakeoff for sm_70
         run: |
-          docker run --rm -v "$PWD:/src" -w /src nvidia/cuda:12.9.2-devel-ubuntu24.04 \
-            bash -eu -c '
-              apt-get update -qq
-              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends make g++
-              if [ ! -x /usr/local/cuda-12.9/bin/nvcc ]; then
-                echo "Makefile NVCC path /usr/local/cuda-12.9/bin/nvcc is missing in this image" >&2
-                exit 1
-              fi
-              nvcc --version
-              make
-            '
+          set -euo pipefail
+          samples=$(mktemp)
+          sample() {
+            local avail
+            avail=$(df -B1 --output=avail / | awk 'NR==2 { print $1 }')
+            echo "$avail" >> "$samples"
+            echo "free disk: $(numfmt --to=iec-i --suffix=B "$avail")"
+          }
+          sample
+          ( while true; do sample; sleep 2; done ) &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
+          echo "free at start: $(df -h / | awk 'NR==2 { print $4 }')"
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends make g++ ca-certificates curl
+          curl -fsSL -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i /tmp/cuda-keyring.deb
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            cuda-nvcc-12-9 cuda-cudart-dev-12-9 libcublas-dev-12-9
+          if [ ! -x /usr/local/cuda-12.9/bin/nvcc ]; then
+            echo "Makefile NVCC path /usr/local/cuda-12.9/bin/nvcc is missing" >&2
+            exit 1
+          fi
+          /usr/local/cuda-12.9/bin/nvcc --version
+          make
+          kill "$sampler" 2>/dev/null || true
+          wait "$sampler" 2>/dev/null || true
+          sample
+          # sort|head gets SIGPIPE under pipefail; awk keeps the minimum itself.
+          low=$(awk '($1+0)==$1 && (min=="" || $1 < min) { min=$1 } END { print min+0 }' "$samples")
+          echo "lowest free disk: ${low} bytes ($(numfmt --to=iec-i --suffix=B "$low"))"
+          echo "### Disk" >> "$GITHUB_STEP_SUMMARY"
+          echo "Lowest free space on \`/\` during the sm_70 compile: ${low} bytes ($(numfmt --to=iec-i --suffix=B "$low"))." >> "$GITHUB_STEP_SUMMARY"
+          df -h /

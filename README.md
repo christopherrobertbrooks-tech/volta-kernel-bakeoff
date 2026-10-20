@@ -151,7 +151,7 @@ python3 bench/test_load_flag.py        # gpu-load sample checks, no GPU
 bench/overnight.sh                     # check, sabotage check, ROUNDS sweeps, LLAMA_ROUNDS llama.cpp sweeps
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the sample checks, ruff, and shellcheck, and compiles with the CUDA 12.9.2 devel image for sm_70. That job does not run the binary.
+GitHub Actions (`.github/workflows/ci.yml`) runs the sample checks, ruff, and shellcheck, and compiles with CUDA 12.9's nvcc and cuBLAS packages for sm_70. That job does not run the binary.
 
 Hardware: Tesla V100-PCIe-32GB, i7-13700KF, 16 GB RAM, Linux, CUDA 12.9, driver 580.173.02.
 
