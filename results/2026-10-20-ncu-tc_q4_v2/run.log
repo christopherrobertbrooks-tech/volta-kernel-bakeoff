@@ -1,0 +1,10 @@
+GPU clocks set to "(gpuClkMin 1380, gpuClkMax 1380)" for GPU 00000000:05:00.0
+
+Warning: persistence mode is disabled on device 00000000:05:00.0. See the Known Issues section of the nvidia-smi(1) man page for more information. Run with [--help | -h] switch to get more information on how to enable persistence mode.
+All done.
+2026-10-20 18:12:19 tc_q4_v2 qwen36_attn_qkv exit 0
+2026-10-20 18:12:21 cublas qwen36_attn_qkv exit 0
+2026-10-20 18:12:24 tc_q4_v2 qwen3_1p7b_mlp_down exit 0
+2026-10-20 18:12:26 cublas qwen3_1p7b_mlp_down exit 0
+2026-10-20 18:12:27 NCU DONE (4 reports)
+All done.
