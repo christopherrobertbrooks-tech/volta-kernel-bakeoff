@@ -37,7 +37,7 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
 - **Correct before fast:** `./bakeoff --check` compares every kernel with a CPU double-precision reference of the same
   quantized weights; `BAKEOFF_SABOTAGE=1` breaks the packing on purpose and the check must fail (it does, for every kernel).
 - Each round takes the median of 5 x 50 calls after warm-up; the table reports the median round. Fastest and slowest
-  round differ by 0.9% typically. The card stayed at 31-45 C and 1,380 MHz.
+  round differ by 0.9% typically. The card stayed at 34-45 C and 1,380 MHz (one start-up sample at 1,230).
 
 ## Results (one token, microseconds, lower is better)
 
@@ -59,7 +59,7 @@ Ours 4-bit = `fused_q4_v2w`, ours 2-bit = `q2w_alu_v3` (one fp16 scale per 32, 2
   on the two with 6,144-long rows (Flash-Next attention out, Qwen3-1.7B MLP down).
 - **2-bit, one token:** ours takes 12-50% less time than llama.cpp's Q2_K, but Q2_K is a more complex format (a scale
   and offset per 16 weights, 256 per block). Against llama.cpp's own plain 2-bit, **Q2_0, ours loses on the big tables
-  (18-28% slower) and wins on the expert-sized ones (17-44% less time)**. Nsight Compute on the Qwen3.6 attention
+  (18-29% slower) and wins on the expert-sized ones (17-44% less time)**. Nsight Compute on the Qwen3.6 attention
   table: ours keeps the GPU's arithmetic 60% busy and its memory only 37% -- it is limited by unpacking -- while Q2_0
   converts the activations to 8-bit integers once and multiplies four weights per instruction (`dp4a`).
 - **2-bit quality, measured** (Qwen3.6-35B-A3B, WikiText-2, llama.cpp; from the gsq-gguf converter, not yet published): a plain 2-bit format with one
