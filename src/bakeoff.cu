@@ -386,10 +386,27 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 dq8 = dupload(p);
             }
             half* dw = dupload(dequant_host(h));    // the fp16 baseline's weights (rounded once to fp16)
-            for (int M : {1, 2, 4, 8, 64, 128, 256, 512}) {   // 512 = the largest batch the sweep times; 64-512 cover every tc_q4_v2 tile / split path
+            // activations: x in [-1, 1] at every M (512 = the largest batch the sweep times; 64-512 cover every
+            // tc_q4_v2 tile / split path); at 1-8 tokens also "bigx" -- 64 neighbouring channels at +-20000..60000,
+            // random signs, as a real down_proj input can hold (fp16-fixer saw 43K-80K): it fits fp16 but overflows
+            // short fp16 sums -- and "tinyx", x in [-1e-3, 1e-3], where fp16 products lose precision first
+            struct XCase { int M, xk; };
+            std::vector<XCase> xcases;
+            for (int M : {1, 2, 4, 8, 64, 128, 256, 512}) xcases.push_back({M, 0});
+            for (int M : {1, 2, 4, 8}) { xcases.push_back({M, 1}); xcases.push_back({M, 2}); }
+            for (const XCase& xc : xcases) {
+                const int M = xc.M;
+                const std::string label = std::string(sh.name) + (xc.xk == 1 ? "+bigx" : xc.xk == 2 ? "+tinyx" : "");
                 std::uniform_real_distribution<float> xd(-1.f, 1.f);
                 std::vector<half> x((size_t) M * sh.K);
-                for (auto& v : x) v = __float2half(xd(rng));
+                for (auto& v : x) v = __float2half(xd(rng) * (xc.xk == 2 ? 1e-3f : 1.f));
+                if (xc.xk == 1) {
+                    std::uniform_real_distribution<float> big(20000.f, 60000.f);
+                    const int k0 = sh.K / 3 / 64 * 64;
+                    for (int m = 0; m < M; ++m)
+                        for (int k = k0; k < std::min(sh.K, k0 + 64); ++k)
+                            x[(size_t) m * sh.K + k] = __float2half((rng() & 1 ? 1.f : -1.f) * big(rng));
+                }
                 const half* dx = dupload(x);
                 float* dy = dalloc<float>((size_t) M * sh.N);
                 std::vector<std::pair<std::string, int>> runs;
@@ -447,7 +464,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                                         r.first.rfind("fused_q4_v3", 0) == 0) ? 2e-3 : 1e-4;
                     const bool ok = worst <= tol;
                     failures += !ok;
-                    printf("check,%s,%s,%d,%.3g,%d,%d,%s\n", r.first.c_str(), sh.name, M, worst, wm, wn,
+                    printf("check,%s,%s,%d,%.3g,%d,%d,%s\n", r.first.c_str(), label.c_str(), M, worst, wm, wn,
                            ok ? "ok" : "FAIL");
                 }
                 CK(cudaFree((void*) dx)); CK(cudaFree(dy));

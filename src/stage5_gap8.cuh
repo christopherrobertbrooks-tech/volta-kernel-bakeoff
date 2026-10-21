@@ -8,8 +8,9 @@
 //     so the activations need no reshuffling -- and multiplies in half2 (two multiply-adds per instruction) straight
 //     against the fp16 activations;
 //   - sums W words (4 W products per half lane) in fp16, then adds that in fp32 with the group scale. The weights are
-//     unpacked as (code - 8) / 8, exact, and the 8 goes back into the fp32 scale, so a partial sum stays within
-//     4 W x max |x| -- it overflows fp16 only for activations above ~65504 / (4 W);
+//     unpacked as (code - 8) / (32 W), exact, so |w| <= 1/4W and a partial sum of 4 W products stays within max |x|:
+//     no overflow for any activation fp16 can hold. (The first version used / 8 and overflowed for |x| above ~16K;
+//     the check's "bigx" case caught it.) The 32 W goes back into the fp32 scale;
 //   - splits each row across S warps (partial sums added in shared memory) so small tables fill the card;
 //   - R rows per warp: each activation load (fp16, 16 bytes per 8 values and token) serves R rows -- at 8 tokens one
 //     row per warp spent its time re-reading the activations from L1.
@@ -19,12 +20,14 @@
 // y [M][N] float. Needs K % (8 W) == 0 (every shape here).
 
 namespace fq3 {
-// byte p of v -> half2 ((code 2p - 8) / 8, (code 2p+1 - 8) / 8), exact
+// byte p of v -> half2 ((code 2p - 8) / D, (code 2p+1 - 8) / D), exact for D = 32 or 64: the low half is
+// (1024 + lo) / D - 1032 / D, the high half (1024 + 16 hi) / (16 D) - 72 / D; each intermediate fits fp16's 11 bits
+template <int D>
 __device__ __forceinline__ half2 unpack2(uint32_t v, int p) {
     uint32_t t = __byte_perm(v, 0u, 0x4040u | (p << 8) | p);         // bytes [b, 0, b, 0]
     t = (t & 0x00F0000Fu) | 0x64006400u;                              // halves 1024 + lo, 1024 + 16 hi
-    const half2 mul = __halves2half2(__float2half(0.125f), __float2half(0.0078125f));
-    const half2 add = __halves2half2(__float2half(-129.f), __float2half(-9.f));
+    const half2 mul = __halves2half2(__float2half(1.f / D), __float2half(1.f / (16 * D)));
+    const half2 add = __halves2half2(__float2half(-1032.f / D), __float2half(-72.f / D));
     return __hfma2(*reinterpret_cast<half2*>(&t), mul, add);
 }
 
@@ -51,11 +54,11 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
                 uint32_t v[W];
                 if (W == 2) { const uint2 p = __ldg(reinterpret_cast<const uint2*>(qr)); v[0] = p.x; v[W - 1] = p.y; }
                 else v[0] = __ldg(qr);
-                sc[r] = 8.f * __half2float(__ldg(s + (size_t) (row0 + r) * (K / GROUP) + (c >> 2)));   // W words: one group
+                sc[r] = (32.f * W) * __half2float(__ldg(s + (size_t) (row0 + r) * (K / GROUP) + (c >> 2)));   // W words: one group
 #pragma unroll
                 for (int i = 0; i < W; ++i)
 #pragma unroll
-                    for (int p = 0; p < 4; ++p) w[r][i][p] = unpack2(v[i], p);
+                    for (int p = 0; p < 4; ++p) w[r][i][p] = unpack2<32 * W>(v[i], p);
             }
 #pragma unroll
             for (int m = 0; m < M; ++m) {
