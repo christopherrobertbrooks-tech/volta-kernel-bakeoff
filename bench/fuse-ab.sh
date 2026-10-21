@@ -3,7 +3,11 @@
 # Same binary both ways, the fusion switched off by an environment variable, so nothing else differs. SM clock
 # locked at 1380 MHz; ROUNDS rounds of llama-bench decode (alternating which side goes first); then greedy text and
 # perplexity both ways -- a fusion that keeps llama.cpp's arithmetic order must give identical text and perplexity.
+# Perplexity runs twice per side: llama.cpp's default 512-row batches, and 8-row batches (-ub 8) -- the 1-8 row path
+# that the conversion folding uses. The V100 is sampled every 100 ms during each bench run and load_flag.py flags clock
+# dips; the log records the llama.cpp commit and a hash of any uncommitted changes, i.e. exactly what was tested.
 #   NAME=add-norm OFF_ENV=GGML_CUDA_NO_ADD_NORM_FUSION=1 bench/fuse-ab.sh
+#   OFF_ENV may hold several variables: OFF_ENV="GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1"
 cd /mnt/steam/volta-kernel-bakeoff || exit 1
 M=${MODEL:-/mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf}
 B=${LLAMA_BIN:-$HOME/llama.cpp-fuse/build-sm70/bin}
@@ -15,11 +19,19 @@ V100=$(nvidia-smi --query-gpu=name,uuid --format=csv,noheader | awk -F', ' '/V10
 trap 'sudo -n nvidia-smi -i $V100 -rgc >> $L 2>&1' EXIT
 sudo -n nvidia-smi -i $V100 -lgc 1380,1380 >> $L 2>&1 || { say "could not lock the clock"; exit 1; }
 export CUDA_VISIBLE_DEVICES=$V100
-say "model $M; binary $B; off = $OFF; $(cd "$B/../.." && git log -1 --format='%h %s')"
+SRC=$(cd "$B/../.." && pwd)
+say "model $M; binary $B; off = $OFF"
+U=$(git -C $SRC diff --stat | tail -1 | sed 's/^ *//')
+say "llama.cpp: $(git -C $SRC log -1 --format='%h %s'); uncommitted: ${U:-none}; diff sha256 $(git -C $SRC diff | sha256sum | cut -c1-16)"
+git -C $SRC diff > $R/uncommitted.diff
+sample_start() { nvidia-smi -i $V100 --query-gpu=timestamp,clocks.sm,clocks.mem,power.draw,temperature.gpu,utilization.gpu,clocks_event_reasons.active,ecc.errors.uncorrected.volatile.total --format=csv,noheader -lms 100 > $R/gpu-load-$1.csv 2>/dev/null & S=$!; }
+sample_stop() { kill $S 2>/dev/null; wait $S 2>/dev/null; python3 bench/load_flag.py "$1" $R/gpu-load-$1.csv >> $L; }
 for r in $(seq 1 ${ROUNDS:-10}); do
   for side in $( ((r % 2)) && echo "on off" || echo "off on"); do
     if [ $side = off ]; then E="env $OFF"; else E=env; fi
+    sample_start $side-$r
     $E $B/llama-bench -m $M -ngl 99 -fa 1 -p 0 -n 128 -r 3 -o csv > $R/bench-$side-$r.csv 2>> $R/bench.err
+    sample_stop $side-$r
     say "round $r $side: $(tail -1 $R/bench-$side-$r.csv | awk -F, '{print $(NF-1)}' | tr -d '\"') tok/s"
   done
 done
@@ -28,9 +40,17 @@ for side in on off; do
   if [ $side = off ]; then E="env $OFF"; else E=env; fi
   $E $B/llama-completion -m $M -ngl 99 -fa 1 -p "$P" -n 256 --temp 0 --top-k 1 --seed 1 --ignore-eos -no-cnv \
       > $R/text-$side.txt 2> $R/text-$side.err
-  $E $B/llama-perplexity -m $M -ngl 99 -fa 1 -f /mnt/steam/gsq-gguf/results/ppl/wiki.test.raw -c 512 --chunks 40 \
-      > $R/ppl-$side.txt 2>&1
-  say "$side: text $(wc -c < $R/text-$side.txt) bytes; $(grep -o 'Final estimate.*' $R/ppl-$side.txt)"
+  for ub in 512 8; do
+    $E $B/llama-perplexity -m $M -ngl 99 -fa 1 -f /mnt/steam/gsq-gguf/results/ppl/wiki.test.raw -c 512 --chunks 40 \
+        -ub $ub > $R/ppl-$side-ub$ub.txt 2>&1
+    grep -o '\[[0-9]*\][0-9.]*' $R/ppl-$side-ub$ub.txt > $R/ppl-chunks-$side-ub$ub.txt
+  done
+  say "$side: text $(wc -c < $R/text-$side.txt) bytes; ub 512 $(grep -o 'Final estimate.*' $R/ppl-$side-ub512.txt); ub 8 $(grep -o 'Final estimate.*' $R/ppl-$side-ub8.txt)"
 done
 cmp -s $R/text-on.txt $R/text-off.txt && say "greedy text IDENTICAL" || say "greedy text DIFFERS"
+for ub in 512 8; do
+  n=$(wc -l < $R/ppl-chunks-on-ub$ub.txt)
+  cmp -s $R/ppl-chunks-on-ub$ub.txt $R/ppl-chunks-off-ub$ub.txt && say "perplexity -ub $ub: all $n chunks IDENTICAL" || say "perplexity -ub $ub: chunks DIFFER"
+done
+say "clock: $(grep -c FLAGGED $L) of $(grep -c 'under load' $L) bench runs flagged; $(grep -o '[0-9]* below 1380' $L | awk '{s+=$1} END {print s+0}') busy samples below 1380 MHz"
 say "FUSE-AB DONE"
