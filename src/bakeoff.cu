@@ -407,6 +407,71 @@ static int run_check_glu(bool sabotage, std::mt19937& rng) {
     return failures;
 }
 
+// fused_q4_v3 with a row count that is not a multiple of its rows per warp (1031 = odd and not a multiple of 4):
+// every variant and the fp32 path, all rows checked, and nothing written past the M x N output (sentinels around
+// it). Then an unsupported token count (3) through fused_q4_v3_fp32in on a big table: it must return false and launch
+// nothing -- the output and the fp16 scratch keep their sentinels.
+static int run_check_odd_rows(bool sabotage, std::mt19937& rng) {
+    const int N = 1031, K = 2048, PAD = 1024;
+    const float SENT = -12345.f;
+    HostQ h = make_weights(N, K, 4, rng);
+    uint32_t* dq = dupload(pack_q4(h, sabotage)); half* ds = dupload(h.scale);
+    int failures = 0;
+    for (int M : {1, 2, 4, 8}) {
+        std::uniform_real_distribution<float> xd(-1.f, 1.f);
+        std::vector<half> x((size_t) M * K); for (auto& v : x) v = __float2half(xd(rng));
+        std::vector<float> xf(x.size()); for (size_t i = 0; i < x.size(); ++i) xf[i] = __half2float(x[i]);
+        const half* dx = dupload(x); const float* dxf = dupload(xf); half* dxh = dalloc<half>(x.size());
+        std::vector<float> init((size_t) M * N + 2 * PAD, SENT);
+        float* dbuf = dupload(init);
+        float* dy = dbuf + PAD;
+        for (int c = -1; c < fq3::NCFG; ++c) {   // -1: fused_q4_v3_fp32in
+            CK(cudaMemcpy(dbuf, init.data(), init.size() * 4, cudaMemcpyHostToDevice));
+            const std::string name = c < 0 ? std::string("fused_q4_v3_fp32in") : std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]";
+            const bool ran = c < 0 ? fused_q4_v3_fp32in(M, dq, ds, dxf, dxh, dy, N, K) : fq3::run(c, M, dq, ds, dx, dy, N, K);
+            CK(cudaDeviceSynchronize());
+            std::vector<float> out(init.size());
+            CK(cudaMemcpy(out.data(), dbuf, out.size() * 4, cudaMemcpyDeviceToHost));
+            int spill = 0;
+            for (int i = 0; i < PAD; ++i) spill += (out[i] != SENT) + (out[PAD + (size_t) M * N + i] != SENT);
+            double worst = 0;
+            for (int m = 0; m < M; ++m)
+                for (int n = 0; n < N; ++n)
+                    worst = std::max(worst, std::fabs(out[PAD + (size_t) m * N + n] - ref_value(h, x, m, n)) / (ref_scale(h, x, m, n) + 1e-12));
+            const bool ok = ran && spill == 0 && worst <= 2e-3;
+            failures += !ok;
+            printf("check,%s,odd_rows_1031x2048,%d,%.3g,%d,0,%s\n", name.c_str(), M, worst, spill, ok ? "ok" : "FAIL");
+        }
+        CK(cudaFree((void*) dx)); CK(cudaFree((void*) dxf)); CK(cudaFree(dxh)); CK(cudaFree(dbuf));
+    }
+    {   // unsupported token count: nothing launched, nothing written. A big table (4096 x 2048, above the expert-sized
+        // limit), so the separate-conversion path is the one taken -- where the conversion used to be launched first.
+        const int M = 3, N = 4096;
+        HostQ hb = make_weights(N, K, 4, rng);
+        uint32_t* dq = dupload(pack_q4(hb, sabotage)); half* ds = dupload(hb.scale);
+        std::vector<float> xf((size_t) M * K, 0.5f);
+        const float* dxf = dupload(xf);
+        std::vector<half> hs((size_t) M * K, __float2half(-7.f));
+        half* dxh = dupload(hs);
+        std::vector<float> init((size_t) M * N, SENT);
+        float* dy = dupload(init);
+        const bool ran = fused_q4_v3_fp32in(M, dq, ds, dxf, dxh, dy, N, K);
+        CK(cudaDeviceSynchronize());
+        std::vector<float> out(init.size()); std::vector<half> hout(hs.size());
+        CK(cudaMemcpy(out.data(), dy, out.size() * 4, cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(hout.data(), dxh, hout.size() * 2, cudaMemcpyDeviceToHost));
+        bool untouched = true;
+        for (float v : out) untouched &= v == SENT;
+        for (half v : hout) untouched &= __half2float(v) == -7.f;
+        const bool ok = !ran && untouched;
+        failures += !ok;
+        printf("check,fused_q4_v3_fp32in_unsupported_M,big_4096x2048,3,0,%d,0,%s\n", (int) ran, ok ? "ok" : "FAIL");
+        CK(cudaFree((void*) dxf)); CK(cudaFree(dxh)); CK(cudaFree(dy)); CK(cudaFree(dq)); CK(cudaFree(ds));
+    }
+    CK(cudaFree(dq)); CK(cudaFree(ds));
+    return failures;
+}
+
 static int run_check(cublasHandle_t hb, bool sabotage) {
     std::mt19937 rng(1234);
     int failures = 0;
@@ -578,6 +643,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
     }
     failures += run_check_moe(hb, sabotage, rng);
     failures += run_check_glu(sabotage, rng);
+    failures += run_check_odd_rows(sabotage, rng);
     fprintf(stderr, "%d failure(s)%s\n", failures, sabotage ? " (sabotage mode: failures expected)" : "");
     return failures ? 1 : 0;
 }

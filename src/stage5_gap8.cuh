@@ -61,7 +61,7 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
     __shared__ float part[S > 1 ? 4 : 1][M * R];
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int row0 = blockIdx.x * RB + (warp / S) * R, sp = warp % S;
-    const bool live = row0 < N;                                       // N % R == 0 for every shape here
+    const bool live = row0 < N;   // rows past N (when N % R != 0): loads clamp to row N - 1, stores are skipped
     float acc[R][M];
 #pragma unroll
     for (int r = 0; r < R; ++r)
@@ -73,11 +73,12 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
             float sc[R];
 #pragma unroll
             for (int r = 0; r < R; ++r) {
-                const uint32_t* qr = q + (size_t) (row0 + r) * (K / 8) + c;
+                const int rr = min(row0 + r, N - 1);
+                const uint32_t* qr = q + (size_t) rr * (K / 8) + c;
                 uint32_t v[W];
                 if (W == 2) { const uint2 p = __ldg(reinterpret_cast<const uint2*>(qr)); v[0] = p.x; v[W - 1] = p.y; }
                 else v[0] = __ldg(qr);
-                sc[r] = (32.f * W) * __half2float(__ldg(s + (size_t) (row0 + r) * (K / GROUP) + (c >> 2)));   // W words: one group
+                sc[r] = (32.f * W) * __half2float(__ldg(s + (size_t) rr * (K / GROUP) + (c >> 2)));   // W words: one group
 #pragma unroll
                 for (int i = 0; i < W; ++i)
 #pragma unroll
@@ -116,8 +117,9 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
         if (live && lane == 0)
 #pragma unroll
             for (int r = 0; r < R; ++r)
+                if (row0 + r < N)
 #pragma unroll
-                for (int m = 0; m < M; ++m) y[(size_t) m * N + row0 + r] = acc[r][m];
+                    for (int m = 0; m < M; ++m) y[(size_t) m * N + row0 + r] = acc[r][m];
         return;
     }
     if (lane == 0)
@@ -126,7 +128,7 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
 #pragma unroll
             for (int m = 0; m < M; ++m) part[warp][r * M + m] = acc[r][m];
     __syncthreads();
-    if (live && sp == 0 && lane < M * R) {
+    if (live && sp == 0 && lane < M * R && row0 + lane / M < N) {
         float t = 0.f;
 #pragma unroll
         for (int j = 0; j < S; ++j) t += part[warp + j][lane];
@@ -172,10 +174,15 @@ static bool run(int cfg, int M, const uint32_t* q, const half* s, const XT* x, f
 //   expert-sized tables (<= 2.6M weights): long rows (K >= 2048) split over 4 warps, short rows one warp each;
 //   bigger tables: one token -> 2 warps per row, 2 words per lane; 2-8 tokens -> 4 rows per warp (one activation load
 //   serves 4 rows), split over more warps until there are >= 5120 (2 tokens) or 1280 (4-8 tokens) warps.
-static int fused_q4_v3_pick(int M, int N, int K) {
+// FQ3_CFG=<name> forces one variant (for tuning) on every path that picks one; -1 = not set
+static int fq3_cfg_override() {
     if (const char* c = getenv("FQ3_CFG"))
         for (int i = 0; i < fq3::NCFG; ++i)
             if (!strcmp(c, fq3::CFGS[i].name)) return i;
+    return -1;
+}
+static int fused_q4_v3_pick(int M, int N, int K) {
+    if (const int forced = fq3_cfg_override(); forced >= 0) return forced;
     auto find = [](int S, int W, int R) {
         for (int i = 0; i < fq3::NCFG; ++i)
             if (fq3::CFGS[i].S == S && fq3::CFGS[i].W == W && fq3::CFGS[i].R == R) return i;
@@ -197,10 +204,13 @@ static bool fused_q4_v3_any(int M, const uint32_t* q, const half* s, const XT* x
 // at 1 token, and at 2-4 tokens on expert-sized tables, read the fp32 activations in the kernel (2 rows per warp,
 // split over more warps until there are >= 10240 warps on big tables, >= 1280 on expert-sized ones); otherwise
 // convert to fp16 in a separate step first (cvt_f32_f16, ~2 us -- mostly the launch) and use fused_q4_v3's rule.
-// xh: scratch for the fp16 copy, M * K halves.
+// xh: scratch for the fp16 copy, M * K halves. FQ3_CFG overrides the variant, not the path. An unsupported token
+// count (anything but 1, 2, 4, 8) returns false before anything is launched.
 static bool fused_q4_v3_fp32in(int M, const uint32_t* q, const half* s, const float* x, half* xh, float* y, int N, int K) {
+    if (M != 1 && M != 2 && M != 4 && M != 8) return false;
     const bool small = (size_t) N * K <= (size_t) 2048 * 2560 / 2;
     if (M == 1 || (small && M <= 4)) {
+        if (const int forced = fq3_cfg_override(); forced >= 0) return fq3::run(forced, M, q, s, x, y, N, K);
         const int target = small ? 1280 : 10240;
         int S = 1;
         while ((N / 2) * S < target && S < 4) S *= 2;
