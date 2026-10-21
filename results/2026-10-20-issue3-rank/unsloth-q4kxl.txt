@@ -1,0 +1,54 @@
+99180 kernels, 65 tokens: 1526 per token, 10.945 ms busy per token
+
+kernel                                           per tok   us/tok  avg us  share
+mul_mat_vec_q<>                                    291.0   5684.1   19.53  51.9%
+rms_norm_f32<>                                     191.0    863.6    4.52   7.9%
+quantize_q8_1<>                                    291.0    803.1    2.76   7.3%
+mul_mat_vec_f<>                                    140.0    793.7    5.67   7.3%
+k_bin_bcast<&op_add>                               100.0    341.6    3.42   3.1%
+topk_moe_cuda                                       40.0    338.5    8.46   3.1%
+flash_attn_tile                                     10.0    255.5   25.55   2.3%
+cpy_scalar<&cpy_1_scalar<float>                     40.0    220.6    5.51   2.0%
+k_get_rows_float_vec                                30.0    213.6    7.12   2.0%
+gated_delta_net_cuda                                30.0    190.9    6.36   1.7%
+k_get_rows_float<float>                             31.0    182.0    5.87   1.7%
+moe_weighted_reduction_f32                          40.0    179.1    4.48   1.6%
+unary_op_kernel<&op_sigmoid>                        70.0    161.0    2.30   1.5%
+concat_cont                                         30.0    126.2    4.21   1.2%
+k_bin_bcast<&op_mul>                                40.0    113.0    2.82   1.0%
+ssm_conv_f32                                        30.0    100.8    3.36   0.9%
+unary_gated_op_kernel<&op_softplus>                 30.0     94.5    3.15   0.9%
+unary_gated_op_kernel<&op_silu>                     30.0     87.3    2.91   0.8%
+rope_multi                                          20.0     60.7    3.04   0.6%
+k_set_rows<float>                                   20.0     56.9    2.85   0.5%
+flash_attn_combine_results                          10.0     41.4    4.14   0.4%
+unary_gated_op_kernel<&op_sigmoid>                  10.0     26.1    2.61   0.2%
+scale_f32                                            1.8     10.7    5.80   0.1%
+
+back-to-back pairs of small (<10 us) kernels, by combined time per token
+first                                    then                                     per tok  us/tok gap us/tok
+quantize_q8_1<>                          mul_mat_vec_q<>                             96.4   902.4       87.7
+rms_norm_f32<>                           mul_mat_vec_f<>                             64.9   685.9      152.5
+mul_mat_vec_f<>                          topk_moe_cuda                               38.4   605.4      119.5
+k_bin_bcast<&op_add>                     rms_norm_f32<>                              62.6   516.9       36.2
+mul_mat_vec_q<>                          quantize_q8_1<>                             46.4   467.7       75.7
+mul_mat_vec_f<>                          unary_op_kernel<&op_sigmoid>                70.0   457.4       35.7
+topk_moe_cuda                            quantize_q8_1<>                             39.6   427.1       44.2
+mul_mat_vec_q<>                          mul_mat_vec_f<>                             40.0   420.8       16.2
+cpy_scalar<&cpy_1_scalar<float>          k_get_rows_float_vec                        29.1   372.9       13.4
+k_get_rows_float_vec                     ssm_conv_f32                                30.0   314.0       40.9
+concat_cont                              cpy_scalar<&cpy_1_scalar<float>             30.0   294.9       48.3
+gated_delta_net_cuda                     rms_norm_f32<>                              28.3   288.2       23.2
+moe_weighted_reduction_f32               quantize_q8_1<>                             39.9   277.6       22.7
+k_get_rows_float<float>                  quantize_q8_1<>                             29.0   266.0      101.0
+rms_norm_f32<>                           quantize_q8_1<>                             36.9   257.5       25.4
+unary_op_kernel<&op_sigmoid>             gated_delta_net_cuda                        30.0   256.6       26.5
+k_bin_bcast<&op_mul>                     k_bin_bcast<&op_add>                        40.0   237.8       34.4
+rms_norm_f32<>                           k_get_rows_float<float>                     21.8   226.5       13.3
+mul_mat_vec_f<>                          k_bin_bcast<&op_add>                        26.5   221.1       88.2
+unary_op_kernel<&op_sigmoid>             k_bin_bcast<&op_mul>                        40.0   208.3       20.5
+unary_gated_op_kernel<&op_softplus>      mul_mat_vec_f<>                             30.0   205.5       13.6
+ssm_conv_f32                             rms_norm_f32<>                              30.0   204.0       32.4
+k_bin_bcast<&op_add>                     unary_gated_op_kernel<&op_softplus>         28.7   189.9       33.4
+rms_norm_f32<>                           rms_norm_f32<>                              29.9   185.3       26.4
+unary_gated_op_kernel<&op_silu>          quantize_q8_1<>                             30.0   156.2       12.4

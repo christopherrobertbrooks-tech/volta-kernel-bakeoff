@@ -1,0 +1,30 @@
+GPU clocks set to "(gpuClkMin 1380, gpuClkMax 1380)" for GPU 00000000:05:00.0
+
+Warning: persistence mode is disabled on device 00000000:05:00.0. See the Known Issues section of the nvidia-smi(1) man page for more information. Run with [--help | -h] switch to get more information on how to enable persistence mode.
+All done.
+2026-10-20 21:45:48 model /mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf; binary /home/chris/llama.cpp-fuse/build-sm70/bin; off = GGML_CUDA_NO_ADD_NORM_FUSION=1; 5e03bdd87 hexagon: ssm-conv updates (#29971)
+2026-10-20 21:47:08 round 1 on: 89.860088 tok/s
+2026-10-20 21:48:25 round 1 off: 88.740828 tok/s
+2026-10-20 21:49:43 round 2 off: 88.803362 tok/s
+2026-10-20 21:51:03 round 2 on: 90.035835 tok/s
+2026-10-20 21:52:19 round 3 on: 89.878668 tok/s
+2026-10-20 21:53:39 round 3 off: 88.725550 tok/s
+2026-10-20 21:55:00 round 4 off: 88.806428 tok/s
+2026-10-20 21:56:21 round 4 on: 89.933563 tok/s
+2026-10-20 21:57:40 round 5 on: 89.891196 tok/s
+2026-10-20 21:59:00 round 5 off: 88.926652 tok/s
+2026-10-20 22:00:21 round 6 off: 88.795894 tok/s
+2026-10-20 22:01:40 round 6 on: 89.813279 tok/s
+2026-10-20 22:03:00 round 7 on: 89.873173 tok/s
+2026-10-20 22:04:21 round 7 off: 88.658997 tok/s
+2026-10-20 22:05:37 round 8 off: 88.839399 tok/s
+2026-10-20 22:06:57 round 8 on: 89.799420 tok/s
+2026-10-20 22:08:15 round 9 on: 89.988266 tok/s
+2026-10-20 22:09:34 round 9 off: 88.782372 tok/s
+2026-10-20 22:10:55 round 10 off: 88.714693 tok/s
+2026-10-20 22:12:13 round 10 on: 90.614361 tok/s
+2026-10-20 22:15:21 on: text 1435 bytes; Final estimate: PPL = 5.8300 +/- 0.13858
+2026-10-20 22:18:31 off: text 1435 bytes; Final estimate: PPL = 5.8300 +/- 0.13858
+2026-10-20 22:18:31 greedy text IDENTICAL
+2026-10-20 22:18:31 FUSE-AB DONE
+All done.
