@@ -1,0 +1,50 @@
+Like for like: ours = fused_q4_v3_fp32in (fp32 activations in, conversion counted); 30-round medians [min-max]
+9 per token count: 8 single tables + Qwen3-1.7B gate+up+SwiGLU in place of its MLP-up table
+--- 1 token(s)
+  flashnext_attn_out         llama  17.19 [17.14-17.32]  ours  16.72 [16.69-16.77]   103%
+  flashnext_attn_q           llama  32.41 [32.37-32.54]  ours  30.76 [30.72-30.82]   105%
+  flashnext_expert_down      llama   6.40 [6.37-6.45]  ours   5.26 [5.24-5.28]   122%
+  flashnext_expert_gate_up   llama   6.78 [6.77-6.82]  ours   6.14 [6.12-6.18]   110%
+  qwen36_attn_qkv            llama  20.35 [20.31-21.03]  ours  18.49 [18.45-18.55]   110%
+  qwen36_expert_down         llama   6.58 [6.31-7.28]  ours   4.46 [4.44-4.51]   148%
+  qwen36_expert_gate_up      llama   7.21 [7.07-7.68]  ours   5.20 [5.16-5.22]   139%
+  qwen3_1p7b_mlp_down        llama  14.78 [14.65-14.83]  ours  14.62 [14.58-14.66]   101%
+  qwen3_1p7b_mlp_up          llama  16.41 [16.36-16.46]  ours  14.77 [14.73-14.83]   111%  (not counted: see gate+up)
+  qwen3_1p7b gate+up+swiglu  llama  27.20  ours  27.65    98%  (llama.cpp one fused call)
+  at or below llama.cpp: 8/9
+--- 2 token(s)
+  flashnext_attn_out         llama  17.38 [16.91-17.48]  ours  19.76 [19.70-19.85]    88%
+  flashnext_attn_q           llama  32.49 [32.41-32.72]  ours  32.01 [31.95-32.13]   101%
+  flashnext_expert_down      llama   7.80 [7.78-7.86]  ours   5.98 [5.92-6.00]   130%
+  flashnext_expert_gate_up   llama   7.05 [7.04-7.09]  ours   6.39 [6.37-6.43]   110%
+  qwen36_attn_qkv            llama  18.61 [18.53-18.73]  ours  21.20 [21.07-21.24]    88%
+  qwen36_expert_down         llama   7.33 [7.25-7.57]  ours   4.69 [4.67-4.75]   156%
+  qwen36_expert_gate_up      llama   7.04 [6.80-7.14]  ours   5.43 [5.41-5.47]   130%
+  qwen3_1p7b_mlp_down        llama  14.99 [14.91-15.03]  ours  17.63 [17.59-17.69]    85%
+  qwen3_1p7b_mlp_up          llama  15.26 [14.97-15.31]  ours  17.39 [17.24-17.43]    88%  (not counted: see gate+up)
+  qwen3_1p7b gate+up+swiglu  llama  32.33  ours  29.35   110%  (llama.cpp unfused)
+  at or below llama.cpp: 6/9
+--- 4 token(s)
+  flashnext_attn_out         llama  20.30 [20.23-20.37]  ours  23.59 [23.55-23.63]    86%
+  flashnext_attn_q           llama  40.59 [39.68-41.64]  ours  40.96 [40.88-41.12]    99%
+  flashnext_expert_down      llama   9.66 [9.57-9.82]  ours   7.66 [7.64-7.68]   126%
+  flashnext_expert_gate_up   llama   7.58 [7.56-7.61]  ours   7.80 [7.78-7.84]    97%
+  qwen36_attn_qkv            llama  23.07 [23.06-23.26]  ours  24.42 [24.39-24.51]    94%
+  qwen36_expert_down         llama   9.09 [8.80-9.29]  ours   6.06 [6.04-6.10]   150%
+  qwen36_expert_gate_up      llama   7.61 [7.49-8.03]  ours   6.62 [6.59-6.66]   115%
+  qwen3_1p7b_mlp_down        llama  17.70 [17.63-17.82]  ours  19.52 [19.50-19.64]    91%
+  qwen3_1p7b_mlp_up          llama  18.80 [18.46-18.86]  ours  20.54 [20.50-20.77]    92%  (not counted: see gate+up)
+  qwen3_1p7b gate+up+swiglu  llama  39.62  ours  37.38   106%  (llama.cpp unfused)
+  at or below llama.cpp: 4/9
+--- 8 token(s)
+  flashnext_attn_out         llama  29.05 [28.69-29.14]  ours  31.78 [31.50-32.13]    91%
+  flashnext_attn_q           llama  53.14 [52.34-53.32]  ours  54.15 [53.80-54.52]    98%
+  flashnext_expert_down      llama  10.84 [10.65-11.04]  ours  10.08 [10.04-10.36]   108%
+  flashnext_expert_gate_up   llama  10.23 [10.01-10.53]  ours  10.81 [10.75-10.94]    95%
+  qwen36_attn_qkv            llama  32.23 [31.99-32.34]  ours  34.39 [34.30-34.47]    94%
+  qwen36_expert_down         llama   9.70 [9.48-9.95]  ours   8.44 [8.40-8.52]   115%
+  qwen36_expert_gate_up      llama  10.30 [10.05-10.64]  ours   9.81 [9.75-10.18]   105%
+  qwen3_1p7b_mlp_down        llama  25.54 [25.30-25.64]  ours  30.11 [29.94-30.45]    85%
+  qwen3_1p7b_mlp_up          llama  25.87 [25.81-25.95]  ours  27.07 [27.03-27.36]    96%  (not counted: see gate+up)
+  qwen3_1p7b gate+up+swiglu  llama  54.06  ours  49.04   110%  (llama.cpp unfused)
+  at or below llama.cpp: 4/9

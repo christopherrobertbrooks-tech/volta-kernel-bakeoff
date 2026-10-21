@@ -68,13 +68,18 @@ experts 512x2048 (8 per token) and attention 8192x2048; Qwen3-1.7B MLP 6144x2048
 
 Ours 4-bit = `fused_q4_v2w`, ours 2-bit = `q2w_alu_v3` (one fp16 scale per 32, 2.5 bits per weight). llama.cpp's Q2_0
 (one fp16 scale per 64, 2.25 bits) is the same kind of plain 2-bit format. llama.cpp's times include converting the
-activations to 8 bits for each multiply, as in a real model. Earlier runs ([2026-10-19](results/2026-10-19), clock
+activations to 8 bits for each multiply, as in a real model; **our times in this table do not** -- they start from
+activations already in fp16. That step costs ~2 us per call (mostly its launch), so this table flatters ours,
+most on the small tables: the like-for-like numbers are in the bullets below (issue #2). Earlier runs ([2026-10-19](results/2026-10-19), clock
 unlocked; [2026-10-20-llama30](results/2026-10-20-llama30)) agree with these medians to 0.09% typically; the
 exceptions are `dq4+cublas` on small tables (up to 40% slower now that its copies are cycled) and llama.cpp's
 IQ2_XS (~10% faster with the clock locked).
 
-- **4-bit, one token:** ours takes 7-30% less time than llama.cpp's Q4_0 on 7 of the 9 tables, and is 2.5-4% slower
-  on the two with 6,144-long rows (Flash-Next attention out, Qwen3-1.7B MLP down).
+- **4-bit, one token, like for like** (`fused_q4_v3_fp32in`: fp32 activations in, the conversion counted; 30
+  clock-locked rounds, [results/2026-10-20-gap8-30r](results/2026-10-20-gap8-30r/like-for-like.txt)): at or below
+  llama.cpp's Q4_0 on 8 of 9 -- 1-9% less time on the big tables, 9-32% on the expert-sized ones. The ninth is
+  Qwen3-1.7B's gate + up + SwiGLU, which llama.cpp runs at one token as one fused call: 27.65 us against 27.20 (2%
+  slower). (Without the conversion counted, the table above, ours looked 7-30% faster on 7 of 9.)
 - **2-bit, one token:** ours takes 12-49% less time than llama.cpp's Q2_K, but Q2_K is a more complex format (a scale
   and offset per 16 weights, 256 per block). Against llama.cpp's own plain 2-bit, **Q2_0, ours loses on the big tables
   (18-29% slower) and wins on the expert-sized ones (17-46% less time)**. Nsight Compute on the Qwen3.6 attention
@@ -86,12 +91,27 @@ IQ2_XS (~10% faster with the clock locked).
   UD-Q4_K_XL 6.73 (lower is better). The plain format's speed comes with a measurable quality cost.
 - Ten experts in one launch: 22 us against 56 for cuBLAS batched and 109 for ten separate cuBLAS calls (Qwen3.6's
   eight: 12 us against 31 and 79).
-- **A few tokens at once (issue #2):** `fused_q4_v3` ([src/stage5_gap8.cuh](src/stage5_gap8.cuh)) unpacks two codes
-  per instruction into fp16 pairs, multiplies in half2, lets one activation load serve 4 rows and splits short tables
-  across warps. At 8 tokens it takes as long as or less than llama.cpp's Q4_0 on 8 of the 9 tables (51 us vs 53 on
-  12288x2560; it was 83) and is 5% slower on Qwen3-1.7B MLP down; at 1 and 2 tokens it wins on all 9 (5 clock-locked
-  rounds, [results/2026-10-20-fq3-default](results/2026-10-20-fq3-default)). It rounds its products to fp16, so it
-  is checked like cuBLAS fp16 (2e-3; worst seen 1.2e-4). The table above still shows the older `v2w`.
+- **A few tokens at once (issue #2), like for like:** `fused_q4_v3` ([src/stage5_gap8.cuh](src/stage5_gap8.cuh))
+  unpacks two codes per instruction into fp16 pairs, multiplies in half2, lets one activation load serve several rows
+  and splits short tables across warps; `fused_q4_v3_fp32in` adds the fp32 -> fp16 conversion by one rule (in the
+  kernel at 1 token and on expert-sized tables up to 4 tokens, a separate step otherwise). At 8 tokens (30 rounds)
+  it is at or below llama.cpp's Q4_0 on 4 of 9 (Qwen3-1.7B's gate + up + SwiGLU counted as one, in place of its
+  MLP-up table, at every token count): three of the four expert tables (5-13% less time) and Qwen3-1.7B's
+  gate + up + SwiGLU (49.0 us vs 54.1 -- ours stacks gate and up into one table and converts once; llama.cpp runs
+  them as two calls at 2-8 tokens). The big tables take 2-18% longer (Flash-Next attention 54.2 us vs 53.1; it was
+  83 before the rebuild); the 6,144-long rows (attention out, MLP down) are the furthest behind. At 2 and 4 tokens:
+  6 and 4 of 9. Without the ~2 us conversion step Flash-Next attention and Qwen3-1.7B MLP up would be ahead and Qwen3.6
+  attention level -- the conversion is the gap there, and folding it into the step that makes the activations is
+  issue #3's work.
+  Precision: products and short partial sums are rounded to fp16, so it is checked like cuBLAS fp16 (2e-3), also
+  with large activations planted (+-20000..60000, as real down_proj inputs) and tiny ones; weights are unpacked as
+  (code - 8) / 32 (/ 64 where a lane sums two words), so no fp16 activation can overflow a partial sum (the first version, / 8, failed the large case).
+  **Limit:** activations above 65,504 in fp32 do not fit fp16 at all and come out as infinity -- llama.cpp's 8-bit
+  conversion scales each block, so it has no such limit. A model whose activations go that high (some down_proj
+  inputs do) needs them rescaled first, as the [FP16 fixer](https://github.com/christopherrobertbrooks-tech/fp16-fixer) does.
+  **Clock:** in this run our side touched the V100's 250 W power cap in 24 of its 30 rounds (33 of 4,379 busy
+  100 ms samples, 0.75%, lowest 1,342 MHz); llama.cpp's side never did (0 of 16,974). Which of our kernels was
+  running during each dip isn't recorded; in issue #7's run the same kind of dips moved results by 0.04%.
 - **Where we lose:** prompts. The rebuilt tensor-core kernel (`tc_q4_v2`) runs at 51-62% of cuBLAS's speed at 512
   tokens on the big tables (see [STAGE3.md](STAGE3.md)); it beats cuBLAS up to ~128 tokens.
 - **The times table loses on this card.** Against a badly built multiply kernel it looked 13-17% faster; against a good
