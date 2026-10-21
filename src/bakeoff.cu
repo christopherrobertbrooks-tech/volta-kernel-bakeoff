@@ -408,13 +408,20 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                             x[(size_t) m * sh.K + k] = __float2half((rng() & 1 ? 1.f : -1.f) * big(rng));
                 }
                 const half* dx = dupload(x);
+                std::vector<float> xf(x.size());              // the same values in fp32, for the fp32-input paths
+                for (size_t i = 0; i < x.size(); ++i) xf[i] = __half2float(x[i]);
+                const float* dxf = dupload(xf);
+                half* dxh = dalloc<half>(x.size());
                 float* dy = dalloc<float>((size_t) M * sh.N);
                 std::vector<std::pair<std::string, int>> runs;
                 if (bits == 4) {
                     if (M <= 8) {
                         runs.push_back({"fused_q4", 0}); runs.push_back({"fused_q4_v2", 4}); runs.push_back({"fused_q4_v2w", 5});
-                        runs.push_back({"fused_q4_v3", 8});
-                        for (int c = 0; c < fq3::NCFG; ++c) runs.push_back({std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]", 200 + c});
+                        runs.push_back({"fused_q4_v3", 8}); runs.push_back({"fused_q4_v3f", 9}); runs.push_back({"cvt+fused_q4_v3", 10});
+                        for (int c = 0; c < fq3::NCFG; ++c) {
+                            runs.push_back({std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]", 200 + c});
+                            runs.push_back({std::string("fused_q4_v3f[") + fq3::CFGS[c].name + "]", 300 + c});
+                        }
                     }
                     if (tc_q4_ok(M, sh.N)) runs.push_back({"tc_q4", 6});
                     if (tc_q4_v2_ok(M, sh.N, sh.K)) {
@@ -441,6 +448,9 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     else if (r.second == 6) launch_tc_q4(dq4, ds, dx, dy, sh.N, sh.K, M);
                     else if (r.second == 7) launch_tc_q4_v2(dq4, ds, dx, dy, sh.N, sh.K, M);
                     else if (r.second == 8) fused_q4_v3_any(M, dq4, ds, dx, dy, sh.N, sh.K);
+                    else if (r.second == 9) fused_q4_v3_any(M, dq4, ds, dxf, dy, sh.N, sh.K);
+                    else if (r.second == 10) { fq3::launch_cvt(dxf, dxh, M * sh.K); fused_q4_v3_any(M, dq4, ds, (const half*) dxh, dy, sh.N, sh.K); }
+                    else if (r.second >= 300) fq3::run(r.second - 300, M, dq4, ds, dxf, dy, sh.N, sh.K);
                     else if (r.second >= 200) fq3::run(r.second - 200, M, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second >= 100) tc2::CFGS[(r.second - 100) / 8].run(dq4, ds, dx, dy, sh.N, sh.K, M, 1 << ((r.second - 100) % 8));
                     else cublas_gemm(hb, dw, dx, dy, sh.N, sh.K, M);
@@ -461,13 +471,13 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     // more (2^-11), and fused_q4_v3 rounds its products and short partial sums to fp16: allow 2e-3
                     // for those, 1e-4 for the kernels that use the exact codes with fp32 sums
                     const double tol = (r.first == "cublas_fp16" || r.first == "dq4+cublas" || r.first.rfind("tc_q4", 0) == 0 ||
-                                        r.first.rfind("fused_q4_v3", 0) == 0) ? 2e-3 : 1e-4;
+                                        r.first.rfind("fused_q4_v3", 0) == 0 || r.first.rfind("cvt+fused_q4_v3", 0) == 0) ? 2e-3 : 1e-4;
                     const bool ok = worst <= tol;
                     failures += !ok;
                     printf("check,%s,%s,%d,%.3g,%d,%d,%s\n", r.first.c_str(), label.c_str(), M, worst, wm, wn,
                            ok ? "ok" : "FAIL");
                 }
-                CK(cudaFree((void*) dx)); CK(cudaFree(dy));
+                CK(cudaFree((void*) dx)); CK(cudaFree(dy)); CK(cudaFree((void*) dxf)); CK(cudaFree(dxh));
                 if (dwq) CK(cudaFree(dwq));
             }
             if (dq4) CK(cudaFree(dq4));
@@ -558,6 +568,8 @@ static void run_sweep(cublasHandle_t hb) {
             if (only_m && M != only_m) continue;
             std::vector<half> x((size_t) M * sh.K, __float2half(0.5f));
             const half* dx = dupload(x);
+            const float* dxf = dupload(std::vector<float>((size_t) M * sh.K, 0.5f));   // fp32 activations, as an engine holds them
+            half* dxh = dalloc<half>((size_t) M * sh.K);
             float* dy = dalloc<float>((size_t) M * sh.N);
             const double flop = 2.0 * M * NK;
             auto report = [&](const char* who, double us, size_t wbytes, int copies) {
@@ -586,15 +598,22 @@ static void run_sweep(cublasHandle_t hb) {
                 report("fused_q4_v2", time_us([&](int i) { fused_q4_v2_any(M, false, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q4_v2w", time_us([&](int i) { fused_q4_v2_any(M, true, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q4_v3", time_us([&](int i) { fused_q4_v3_any(M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
+                // like for like with llama.cpp (fp32 activations in, conversion included): fp32 read directly, or a
+                // separate fp32 -> fp16 step first; and that step alone
+                report("fused_q4_v3f", time_us([&](int i) { fused_q4_v3_any(M, q4[i % c4], s4[i % c4], dxf, dy, sh.N, sh.K); }), q4b, c4);
+                report("cvt+fused_q4_v3", time_us([&](int i) { fq3::launch_cvt(dxf, dxh, M * sh.K); fused_q4_v3_any(M, q4[i % c4], s4[i % c4], (const half*) dxh, dy, sh.N, sh.K); }), q4b, c4);
+                report("cvt_f32_f16", time_us([&](int) { fq3::launch_cvt(dxf, dxh, M * sh.K); }), 0, 1);
                 if (getenv("FQ3_TUNE"))   // every variant, for tuning
                     for (int c = 0; c < fq3::NCFG; ++c) {
-                        const std::string name = std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]";
+                        std::string name = std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]";
                         report(name.c_str(), time_us([&](int i) { fq3::run(c, M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
+                        name = std::string("fused_q4_v3f[") + fq3::CFGS[c].name + "]";
+                        report(name.c_str(), time_us([&](int i) { fq3::run(c, M, q4[i % c4], s4[i % c4], dxf, dy, sh.N, sh.K); }), q4b, c4);
                     }
                 report("fused_q4", time_us([&](int i) { fused_q4_any(M, q4[i % c4], s4[i % c4], dx, dy, sh.N, sh.K); }), q4b, c4);
                 report("fused_q8", time_us([&](int i) { fused_q8_any(M, q8[i % c8], s8[i % c8], dx, dy, sh.N, sh.K); }), q8b, c8);
             }
-            CK(cudaFree((void*) dx)); CK(cudaFree(dy));
+            CK(cudaFree((void*) dx)); CK(cudaFree(dy)); CK(cudaFree((void*) dxf)); CK(cudaFree(dxh));
         }
         {   // 2-bit, one token
             HostQ2 h2 = make_q2(sh.N, sh.K, rng);

@@ -12,6 +12,8 @@
 //     no overflow for any activation fp16 can hold. (The first version used / 8 and overflowed for |x| above ~16K;
 //     the check's "bigx" case caught it.) The 32 W goes back into the fp32 scale;
 //   - splits each row across S warps (partial sums added in shared memory) so small tables fill the card;
+//   - activations in fp16, or (fused_q4_v3f) in fp32 as a real engine holds them, converted in registers -- the
+//     like-for-like comparison with llama.cpp, whose times include converting its fp32 activations to 8 bits;
 //   - R rows per warp: each activation load (fp16, 16 bytes per 8 values and token) serves R rows -- at 8 tokens one
 //     row per warp spent its time re-reading the activations from L1.
 // Precision: each product and partial sum is rounded to fp16 (11 bits), so it is checked in the fp16 class (2e-3,
@@ -31,9 +33,30 @@ __device__ __forceinline__ half2 unpack2(uint32_t v, int p) {
     return __hfma2(*reinterpret_cast<half2*>(&t), mul, add);
 }
 
-template <int M, int S, int W, int R>
+// 8 activations (k = 8 i .. 8 i + 7) of one token as four half2: straight from fp16, or converted from fp32 in registers
+__device__ __forceinline__ uint4 load_x8(const half* xr, int i) { return __ldg(reinterpret_cast<const uint4*>(xr) + i); }
+__device__ __forceinline__ uint4 load_x8(const float* xr, int i) {
+    const float4* p = reinterpret_cast<const float4*>(xr) + 2 * i;
+    const float4 a = __ldg(p), b = __ldg(p + 1);
+    half2 h[4] = {__floats2half2_rn(a.x, a.y), __floats2half2_rn(a.z, a.w), __floats2half2_rn(b.x, b.y),
+                  __floats2half2_rn(b.z, b.w)};
+    return *reinterpret_cast<uint4*>(h);
+}
+
+// fp32 -> fp16 activations, the separate step a real engine (fp32 activations, as llama.cpp's) would need; n % 4 == 0
+__global__ void cvt_f32_f16(const float* __restrict__ x, half* __restrict__ xh, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (4 * i >= n) return;
+    const float4 a = __ldg(reinterpret_cast<const float4*>(x) + i);
+    half2* o = reinterpret_cast<half2*>(xh) + 2 * i;
+    o[0] = __floats2half2_rn(a.x, a.y);
+    o[1] = __floats2half2_rn(a.z, a.w);
+}
+static void launch_cvt(const float* x, half* xh, int n) { cvt_f32_f16<<<(n / 4 + 255) / 256, 256>>>(x, xh, n); }
+
+template <int M, int S, int W, int R, typename XT>
 __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ q, const half* __restrict__ s,
-                                                   const half* __restrict__ x, float* __restrict__ y, int N, int K) {
+                                                   const XT* __restrict__ x, float* __restrict__ y, int N, int K) {
     constexpr int RB = 4 / S * R;                                     // rows per block of 4 warps (R per warp)
     __shared__ float part[S > 1 ? 4 : 1][M * R];
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
@@ -62,13 +85,13 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
             }
 #pragma unroll
             for (int m = 0; m < M; ++m) {
-                const uint4* xr = reinterpret_cast<const uint4*>(x + (size_t) m * K) + c;
+                const XT* xr = x + (size_t) m * K;
                 half2 a[R];
 #pragma unroll
                 for (int r = 0; r < R; ++r) a[r] = __float2half2_rn(0.f);
 #pragma unroll
                 for (int i = 0; i < W; ++i) {
-                    const uint4 xv = __ldg(xr + i);                   // one activation load serves R rows
+                    const uint4 xv = load_x8(xr, c + i);              // one activation load serves R rows
                     const half2* xh = reinterpret_cast<const half2*>(&xv);
 #pragma unroll
                     for (int r = 0; r < R; ++r)
@@ -111,10 +134,10 @@ __global__ void __launch_bounds__(128) fused_q4_v3(const uint32_t* __restrict__ 
     }
 }
 
-template <int M, int S, int W, int R>
-static void launch(const uint32_t* q, const half* s, const half* x, float* y, int N, int K) {
+template <typename XT, int M, int S, int W, int R>
+static void launch(const uint32_t* q, const half* s, const XT* x, float* y, int N, int K) {
     constexpr int RB = 4 / S * R;
-    fused_q4_v3<M, S, W, R><<<(N + RB - 1) / RB, 128>>>(q, s, x, y, N, K);
+    fused_q4_v3<M, S, W, R, XT><<<(N + RB - 1) / RB, 128>>>(q, s, x, y, N, K);
 }
 
 // the variants tried: S warps per row, W words per lane per step, R rows per warp
@@ -125,20 +148,21 @@ struct Cfg { const char* name; int S, W, R; };
 static const Cfg CFGS[] = {FQ3_CFGS(FQ3_NAME)};
 constexpr int NCFG = sizeof(CFGS) / sizeof(CFGS[0]);
 
-template <int M>
-static void run_m(int cfg, const uint32_t* q, const half* s, const half* x, float* y, int N, int K) {
-    using L = void (*)(const uint32_t*, const half*, const half*, float*, int, int);
-#define FQ3_FN(S, W, R) launch<M, S, W, R>,
+template <typename XT, int M>
+static void run_m(int cfg, const uint32_t* q, const half* s, const XT* x, float* y, int N, int K) {
+    using L = void (*)(const uint32_t*, const half*, const XT*, float*, int, int);
+#define FQ3_FN(S, W, R) launch<XT, M, S, W, R>,
     static const L fns[] = {FQ3_CFGS(FQ3_FN)};
 #undef FQ3_FN
     fns[cfg](q, s, x, y, N, K);
 }
-static bool run(int cfg, int M, const uint32_t* q, const half* s, const half* x, float* y, int N, int K) {
+template <typename XT>
+static bool run(int cfg, int M, const uint32_t* q, const half* s, const XT* x, float* y, int N, int K) {
     switch (M) {
-        case 1: run_m<1>(cfg, q, s, x, y, N, K); return true;
-        case 2: run_m<2>(cfg, q, s, x, y, N, K); return true;
-        case 4: run_m<4>(cfg, q, s, x, y, N, K); return true;
-        case 8: run_m<8>(cfg, q, s, x, y, N, K); return true;
+        case 1: run_m<XT, 1>(cfg, q, s, x, y, N, K); return true;
+        case 2: run_m<XT, 2>(cfg, q, s, x, y, N, K); return true;
+        case 4: run_m<XT, 4>(cfg, q, s, x, y, N, K); return true;
+        case 8: run_m<XT, 8>(cfg, q, s, x, y, N, K); return true;
         default: return false;
     }
 }
@@ -164,6 +188,7 @@ static int fused_q4_v3_pick(int M, int N, int K) {
     while ((N / 4) * S < target && S < 4) S *= 2;
     return find(S, 1, 4);
 }
-static bool fused_q4_v3_any(int M, const uint32_t* q, const half* s, const half* x, float* y, int N, int K) {
+template <typename XT>
+static bool fused_q4_v3_any(int M, const uint32_t* q, const half* s, const XT* x, float* y, int N, int K) {
     return fq3::run(fused_q4_v3_pick(M, N, K), M, q, s, x, y, N, K);
 }
