@@ -104,6 +104,59 @@ int main() {
             }
         }
     }
+    // Gate + up + SwiGLU, Qwen3-1.7B's MLP (gate and up 6144x2048 each, Q4_0): at one token llama.cpp fuses the three
+    // into one mul_mat_vec_q call that converts the activations once (ggml-cuda.cu, ggml_cuda_try_fuse); timed per
+    // (gate, up, glu) triple, R triples over different weight copies as above
+    if ((!only_type || !strcmp(only_type, "llama_q4_0_gateup_glu")) && (!only_shape || !strcmp(only_shape, "qwen3_1p7b_mlp_gate_up"))) {
+        const ggml_type t = GGML_TYPE_Q4_0;
+        const int N = 6144, K = 2048;
+        ggml_quantize_init(t);
+        const size_t wbytes = ggml_row_size(t, K) * N;
+        std::vector<float> wf((size_t) N * K);
+        std::vector<uint8_t> wg(wbytes), wu(wbytes);
+        for (auto& v : wf) v = nd(rng);
+        ggml_quantize_chunk(t, wf.data(), wg.data(), 0, N, K, nullptr);
+        for (auto& v : wf) v = nd(rng);
+        ggml_quantize_chunk(t, wf.data(), wu.data(), 0, N, K, nullptr);
+        const int R = (int) std::min<size_t>(256, std::max<size_t>(1, (96u << 20) / (2 * wbytes) + 1));
+        for (int M : {1, 2, 4, 8}) {
+            if (only_m && M != only_m) continue;
+            ggml_init_params ip = {ggml_tensor_overhead() * (2 * R + 8), nullptr, true};
+            ggml_context* wctx = ggml_init(ip);
+            std::vector<ggml_tensor*> G(R), U(R);
+            for (int r = 0; r < R; ++r) { G[r] = ggml_new_tensor_2d(wctx, t, K, N); U[r] = ggml_new_tensor_2d(wctx, t, K, N); }
+            ggml_tensor* X = ggml_new_tensor_2d(wctx, GGML_TYPE_F32, K, M);
+            ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(wctx, be);
+            for (int r = 0; r < R; ++r) { ggml_backend_tensor_set(G[r], wg.data(), 0, wbytes); ggml_backend_tensor_set(U[r], wu.data(), 0, wbytes); }
+            std::vector<float> xv((size_t) K * M, 0.5f);
+            ggml_backend_tensor_set(X, xv.data(), 0, xv.size() * sizeof(float));
+            ggml_init_params gp = {ggml_tensor_overhead() * (4 * R + 8) + ggml_graph_overhead_custom(8 * R + 16, false), nullptr, true};
+            ggml_context* gctx = ggml_init(gp);
+            ggml_cgraph* gf = ggml_new_graph_custom(gctx, 8 * R + 16, false);
+            for (int r = 0; r < R; ++r)
+                ggml_build_forward_expand(gf, ggml_swiglu_split(gctx, ggml_mul_mat(gctx, G[r], X), ggml_mul_mat(gctx, U[r], X)));
+            ggml_gallocr_t ga = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be));
+            if (!ggml_gallocr_alloc_graph(ga, gf)) { fprintf(stderr, "alloc failed\n"); return 2; }
+            for (int i = 0; i < 3; ++i) ggml_backend_graph_compute(be, gf);
+            ggml_backend_synchronize(be);
+            std::vector<double> tt;
+            for (int rep = 0; rep < 5; ++rep) {
+                const auto a = std::chrono::steady_clock::now();
+                for (int i = 0; i < 4; ++i) ggml_backend_graph_compute(be, gf);
+                ggml_backend_synchronize(be);
+                tt.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - a).count() / (4.0 * R));
+            }
+            std::sort(tt.begin(), tt.end());
+            const double us = tt[2];
+            printf("llama_q4_0_gateup_glu,qwen3_1p7b_mlp_gate_up,%d,%d,%d,%.2f,%.1f,%.3f,%d\n", 2 * N, K, M, us,
+                   2 * wbytes / us / 1e3, 2.0 * M * 2 * N * K / us / 1e6, R);
+            fflush(stdout);
+            ggml_gallocr_free(ga);
+            ggml_free(gctx);
+            ggml_backend_buffer_free(buf);
+            ggml_free(wctx);
+        }
+    }
     ggml_backend_free(be);
     return 0;
 }

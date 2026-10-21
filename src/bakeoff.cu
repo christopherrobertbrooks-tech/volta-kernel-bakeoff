@@ -368,6 +368,45 @@ static int run_check_moe(cublasHandle_t hb, bool sabotage, std::mt19937& rng) {
     return failures;
 }
 
+// Qwen3-1.7B's MLP gate + up + SwiGLU (gate and up 6144x2048, stacked): the stacked multiply against the reference
+// (fp16 class, 2e-3), and the SwiGLU output against silu(gate) * up computed from that multiply's own result
+static int run_check_glu(bool sabotage, std::mt19937& rng) {
+    const int N = 6144, K = 2048;
+    HostQ h = make_weights(2 * N, K, 4, rng);
+    uint32_t* dq = dupload(pack_q4(h, sabotage)); half* ds = dupload(h.scale);
+    int failures = 0;
+    for (int M : {1, 2, 4, 8}) {
+        std::uniform_real_distribution<float> xd(-1.f, 1.f);
+        std::vector<half> x((size_t) M * K); for (auto& v : x) v = __float2half(xd(rng));
+        std::vector<float> xf(x.size()); for (size_t i = 0; i < x.size(); ++i) xf[i] = __half2float(x[i]);
+        float* dxf = dupload(xf); half* dxh = dalloc<half>(x.size());
+        float* dys = dalloc<float>((size_t) M * 2 * N); float* dout = dalloc<float>((size_t) M * N);
+        gate_up_glu_fp32in(M, dq, ds, dxf, dxh, dys, dout, N, K);
+        CK(cudaDeviceSynchronize());
+        std::vector<float> ys((size_t) M * 2 * N), out((size_t) M * N);
+        CK(cudaMemcpy(ys.data(), dys, ys.size() * 4, cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(out.data(), dout, out.size() * 4, cudaMemcpyDeviceToHost));
+        std::uniform_int_distribution<int> nd(0, N - 1), md(0, M - 1);
+        double wmm = 0, wglu = 0;
+        for (int t = 0; t < 256; ++t) {
+            const int m = md(rng), n = nd(rng);
+            for (int part = 0; part < 2; ++part) {
+                const int row = n + part * N;
+                wmm = std::max(wmm, std::fabs(ys[(size_t) m * 2 * N + row] - ref_value(h, x, m, row)) / (ref_scale(h, x, m, row) + 1e-12));
+            }
+            const double g = ys[(size_t) m * 2 * N + n], u = ys[(size_t) m * 2 * N + N + n];
+            const double want = g / (1.0 + std::exp(-g)) * u;
+            wglu = std::max(wglu, std::fabs(out[(size_t) m * N + n] - want) / (std::fabs(want) + 1e-6));
+        }
+        const bool ok = wmm <= 2e-3 && wglu <= 1e-5;
+        failures += !ok;
+        printf("check,gate_up_glu_fp32in,qwen3_1p7b_mlp_gate_up,%d,%.3g,%.3g,0,%s\n", M, wmm, wglu, ok ? "ok" : "FAIL");
+        CK(cudaFree(dxf)); CK(cudaFree(dxh)); CK(cudaFree(dys)); CK(cudaFree(dout));
+    }
+    CK(cudaFree(dq)); CK(cudaFree(ds));
+    return failures;
+}
+
 static int run_check(cublasHandle_t hb, bool sabotage) {
     std::mt19937 rng(1234);
     int failures = 0;
@@ -417,7 +456,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                 if (bits == 4) {
                     if (M <= 8) {
                         runs.push_back({"fused_q4", 0}); runs.push_back({"fused_q4_v2", 4}); runs.push_back({"fused_q4_v2w", 5});
-                        runs.push_back({"fused_q4_v3", 8}); runs.push_back({"fused_q4_v3f", 9}); runs.push_back({"cvt+fused_q4_v3", 10});
+                        runs.push_back({"fused_q4_v3", 8}); runs.push_back({"fused_q4_v3f", 9}); runs.push_back({"cvt+fused_q4_v3", 10}); runs.push_back({"fused_q4_v3_fp32in", 11});
                         for (int c = 0; c < fq3::NCFG; ++c) {
                             runs.push_back({std::string("fused_q4_v3[") + fq3::CFGS[c].name + "]", 200 + c});
                             runs.push_back({std::string("fused_q4_v3f[") + fq3::CFGS[c].name + "]", 300 + c});
@@ -450,6 +489,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
                     else if (r.second == 8) fused_q4_v3_any(M, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second == 9) fused_q4_v3_any(M, dq4, ds, dxf, dy, sh.N, sh.K);
                     else if (r.second == 10) { fq3::launch_cvt(dxf, dxh, M * sh.K); fused_q4_v3_any(M, dq4, ds, (const half*) dxh, dy, sh.N, sh.K); }
+                    else if (r.second == 11) fused_q4_v3_fp32in(M, dq4, ds, dxf, dxh, dy, sh.N, sh.K);
                     else if (r.second >= 300) fq3::run(r.second - 300, M, dq4, ds, dxf, dy, sh.N, sh.K);
                     else if (r.second >= 200) fq3::run(r.second - 200, M, dq4, ds, dx, dy, sh.N, sh.K);
                     else if (r.second >= 100) tc2::CFGS[(r.second - 100) / 8].run(dq4, ds, dx, dy, sh.N, sh.K, M, 1 << ((r.second - 100) % 8));
@@ -537,6 +577,7 @@ static int run_check(cublasHandle_t hb, bool sabotage) {
         }
     }
     failures += run_check_moe(hb, sabotage, rng);
+    failures += run_check_glu(sabotage, rng);
     fprintf(stderr, "%d failure(s)%s\n", failures, sabotage ? " (sabotage mode: failures expected)" : "");
     return failures ? 1 : 0;
 }
@@ -602,6 +643,7 @@ static void run_sweep(cublasHandle_t hb) {
                 // separate fp32 -> fp16 step first; and that step alone
                 report("fused_q4_v3f", time_us([&](int i) { fused_q4_v3_any(M, q4[i % c4], s4[i % c4], dxf, dy, sh.N, sh.K); }), q4b, c4);
                 report("cvt+fused_q4_v3", time_us([&](int i) { fq3::launch_cvt(dxf, dxh, M * sh.K); fused_q4_v3_any(M, q4[i % c4], s4[i % c4], (const half*) dxh, dy, sh.N, sh.K); }), q4b, c4);
+                report("fused_q4_v3_fp32in", time_us([&](int i) { fused_q4_v3_fp32in(M, q4[i % c4], s4[i % c4], dxf, dxh, dy, sh.N, sh.K); }), q4b, c4);
                 report("cvt_f32_f16", time_us([&](int) { fq3::launch_cvt(dxf, dxh, M * sh.K); }), 0, 1);
                 if (getenv("FQ3_TUNE"))   // every variant, for tuning
                     for (int c = 0; c < fq3::NCFG; ++c) {
@@ -654,6 +696,28 @@ static void run_sweep(cublasHandle_t hb) {
         for (auto w : wtmp) CK(cudaFree(w));
     }
 
+    // gate + up + SwiGLU (Qwen3-1.7B's MLP), timed per (gate, up, glu) like llama.cpp's fused one-token call
+    if (!only || !strcmp(only, "qwen3_1p7b_mlp_gate_up")) {
+        const int N = 6144, K = 2048;
+        const size_t NK2 = (size_t) 2 * N * K, qb = NK2 / 2 + NK2 / GROUP * 2;
+        HostQ h = make_weights(2 * N, K, 4, rng);
+        const auto p = pack_q4(h, false);
+        const int c = copies_for(qb);
+        std::vector<uint32_t*> q(c); std::vector<half*> sc(c);
+        for (int i = 0; i < c; ++i) { q[i] = dupload(p); sc[i] = dupload(h.scale); }
+        for (int M : {1, 2, 4, 8}) {
+            if (only_m && M != only_m) continue;
+            const float* dxf = dupload(std::vector<float>((size_t) M * K, 0.5f));
+            half* dxh = dalloc<half>((size_t) M * K);
+            float* dys = dalloc<float>((size_t) M * 2 * N); float* dout = dalloc<float>((size_t) M * N);
+            const double us = time_us([&](int i) { gate_up_glu_fp32in(M, q[i % c], sc[i % c], dxf, dxh, dys, dout, N, K); });
+            printf("gate_up_glu_fp32in,qwen3_1p7b_mlp_gate_up,%d,%d,%d,%.2f,%.1f,%.3f,%d\n", 2 * N, K, M, us, qb / us / 1e3,
+                   2.0 * M * NK2 / us / 1e6, c);
+            fflush(stdout);
+            CK(cudaFree((void*) dxf)); CK(cudaFree(dxh)); CK(cudaFree(dys)); CK(cudaFree(dout));
+        }
+        for (int i = 0; i < c; ++i) { CK(cudaFree(q[i])); CK(cudaFree(sc[i])); }
+    }
     // MoE decode: E experts, one token each (Strata Coder: 10 of 256; Qwen3.6: 8 of 256)
     for (const Shape& sh : SHAPES) {
         if (only || !strstr(sh.name, "expert")) continue;

@@ -192,3 +192,40 @@ template <typename XT>
 static bool fused_q4_v3_any(int M, const uint32_t* q, const half* s, const XT* x, float* y, int N, int K) {
     return fq3::run(fused_q4_v3_pick(M, N, K), M, q, s, x, y, N, K);
 }
+
+// Like for like with llama.cpp: fp32 activations in, the conversion counted. One rule (results/2026-10-20-fq3f-tune):
+// at 1 token, and at 2-4 tokens on expert-sized tables, read the fp32 activations in the kernel (2 rows per warp,
+// split over more warps until there are >= 10240 warps on big tables, >= 1280 on expert-sized ones); otherwise
+// convert to fp16 in a separate step first (cvt_f32_f16, ~2 us -- mostly the launch) and use fused_q4_v3's rule.
+// xh: scratch for the fp16 copy, M * K halves.
+static bool fused_q4_v3_fp32in(int M, const uint32_t* q, const half* s, const float* x, half* xh, float* y, int N, int K) {
+    const bool small = (size_t) N * K <= (size_t) 2048 * 2560 / 2;
+    if (M == 1 || (small && M <= 4)) {
+        const int target = small ? 1280 : 10240;
+        int S = 1;
+        while ((N / 2) * S < target && S < 4) S *= 2;
+        int cfg = -1;
+        for (int i = 0; i < fq3::NCFG; ++i)
+            if (fq3::CFGS[i].S == S && fq3::CFGS[i].W == 1 && fq3::CFGS[i].R == 2) cfg = i;
+        if (cfg >= 0) return fq3::run(cfg, M, q, s, x, y, N, K);
+    }
+    fq3::launch_cvt(x, xh, M * K);
+    return fused_q4_v3_any(M, q, s, (const half*) xh, y, N, K);
+}
+
+// Gate + up + SwiGLU at a few tokens, as llama.cpp runs it at one token (one fused call, one activation conversion):
+// gate and up stacked into one 2N-row table (rows 0..N-1 gate, N..2N-1 up), multiplied in one fused_q4_v3_fp32in
+// pass, then out = silu(gate) * up. ystack: M x 2N scratch, out: M x N.
+__global__ void swiglu_split(const float* __restrict__ ys, float* __restrict__ out, int N, int total) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= total) return;
+    const int m = i / N, n = i % N;
+    const float g = ys[(size_t) m * 2 * N + n], u = ys[(size_t) m * 2 * N + N + n];
+    out[i] = g / (1.f + __expf(-g)) * u;
+}
+static bool gate_up_glu_fp32in(int M, const uint32_t* q, const half* s, const float* x, half* xh, float* ystack,
+                               float* out, int N, int K) {
+    if (!fused_q4_v3_fp32in(M, q, s, x, xh, ystack, 2 * N, K)) return false;
+    swiglu_split<<<(M * N + 255) / 256, 256>>>(ystack, out, N, M * N);
+    return true;
+}
