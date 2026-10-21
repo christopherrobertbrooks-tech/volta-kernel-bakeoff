@@ -3,8 +3,20 @@
 # The 8-bit blocks are computed exactly as quantize_q8_1 does (one warp per 32 values, the same lane order, the same
 # warp_reduce_max / warp_reduce_sum, d = amax / 127, roundf), so they are bit-identical. Covers the fused add(s) ->
 # norm kernel and plain RMS_NORM -> MUL, at 1-8 rows with 1024-multiple widths. GGML_CUDA_NO_Q8_FOLD=1 switches it off.
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def write(path, s):
+    with open(path, "w") as f:
+        f.write(s)
+
+
 def edit(path, old, new, count=1):
-    s = open(path).read(); assert s.count(old) == count, (path, old[:70], s.count(old)); open(path, "w").write(s.replace(old, new))
+    s = read(path)
+    assert s.count(old) == count, (path, old[:70], s.count(old))
+    write(path, s.replace(old, new))
 
 # --- 1. the cache as context helpers (find / add), used by mmvq and the norm ---
 CC = "ggml/src/ggml-cuda/common.cuh"
@@ -61,7 +73,7 @@ edit(CC, '''    std::unordered_set<const void *> q8_graph_tensors;
 
 # --- 2. mmvq uses the helpers ---
 MV = "ggml/src/ggml-cuda/mmvq.cu"
-s = open(MV).read()
+s = read(MV)
 a = s.index("    if (!no_q8_cache) {\n        const ggml_tensor * root = src1;")
 b = s.index("    if (q8_ptr == nullptr) {\n        q8_ptr = src1_q8_1.alloc(q8_size);")
 s = s[:a] + '''    if (!no_q8_cache) {
@@ -72,11 +84,11 @@ s = s[:a] + '''    if (!no_q8_cache) {
         }
     }
 ''' + s[b:]
-open(MV, "w").write(s)
+write(MV, s)
 
 # --- 3. the norm kernel writes q8_1 too; n_terms = 0 is plain RMS_NORM -> MUL (no add) ---
 N = "ggml/src/ggml-cuda/norm.cu"
-s = open(N).read()
+s = read(N)
 a = s.index("template <int block_size, int n_terms>\nstatic __global__ void add_rms_norm_mul_f32(")
 b = s.index("template <int block_size>\nstatic __global__ void rms_norm_back_f32(")
 s = s[:a] + r'''template <int block_size, int n_terms>
@@ -215,7 +227,7 @@ bool ggml_cuda_op_rms_norm_mul_fold_q8(ggml_backend_cuda_context & ctx, ggml_ten
 }
 
 ''' + s[b:]
-open(N, "w").write(s)
+write(N, s)
 edit("ggml/src/ggml-cuda/norm.cuh", '''void ggml_cuda_op_add_rms_norm_fused(ggml_backend_cuda_context & ctx, ggml_tensor ** adds, int n_adds,
                                      ggml_tensor * rms_norm, ggml_tensor * mul_tensor);''', '''void ggml_cuda_op_add_rms_norm_fused(ggml_backend_cuda_context & ctx, ggml_tensor ** adds, int n_adds,
                                      ggml_tensor * rms_norm, ggml_tensor * mul_tensor);

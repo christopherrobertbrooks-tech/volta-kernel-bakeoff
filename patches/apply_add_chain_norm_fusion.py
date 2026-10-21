@@ -2,10 +2,20 @@
 # expert + residual, which llama.cpp already merges into one add kernel -- then RMS_NORM -> MUL, in one kernel.
 # The terms are summed left to right ((a + b) + c), as llama.cpp's merged add does, so the result is bit-identical.
 # GGML_CUDA_NO_ADD_CHAIN_NORM_FUSION=1 switches the chain part off (single adds still fuse).
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def write(path, s):
+    with open(path, "w") as f:
+        f.write(s)
+
+
 def edit(path, old, new, count=1):
-    s = open(path).read()
+    s = read(path)
     assert s.count(old) == count, (path, old[:70], s.count(old))
-    open(path, "w").write(s.replace(old, new))
+    write(path, s.replace(old, new))
 
 N = "ggml/src/ggml-cuda/norm.cu"
 edit(N, '''template <int block_size>
@@ -87,7 +97,7 @@ edit("ggml/src/ggml-cuda/norm.cuh", '''void ggml_cuda_op_add_rms_norm_fused(ggml
                                      ggml_tensor * rms_norm, ggml_tensor * mul_tensor);''')
 
 C = "ggml/src/ggml-cuda/ggml-cuda.cu"
-a = open(C).read()
+a = read(C)
 start = a.index("    // residual add, then the next norm: ADD -> RMS_NORM -> MUL")
 end = a.index("    // multi-(add or mul)\n")
 a = a[:start] + '''    // residual add(s), then the next norm: ADD [-> ADD ...] -> RMS_NORM -> MUL (norm weight) in one kernel; the last
@@ -134,5 +144,5 @@ a = a[:start] + '''    // residual add(s), then the next norm: ADD [-> ADD ...] 
     }
 
 ''' + a[end:]
-open(C, "w").write(a)
+write(C, a)
 print("patched")

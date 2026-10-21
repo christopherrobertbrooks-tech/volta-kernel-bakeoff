@@ -7,8 +7,20 @@
 # (the first version reused across them: perplexity 5.8296 vs 5.8300).
 # Copies live in a fixed 32 MB device buffer allocated once outside CUDA-graph capture; when it is missing or full
 # the normal pool path is used. GGML_CUDA_NO_Q8_CACHE=1 switches the cache off.
-def edit(path, old, new):
-    s = open(path).read(); assert s.count(old) == 1, (path, old[:60], s.count(old)); open(path, "w").write(s.replace(old, new))
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def write(path, s):
+    with open(path, "w") as f:
+        f.write(s)
+
+
+def edit(path, old, new, count=1):
+    s = read(path)
+    assert s.count(old) == count, (path, old[:70], s.count(old))
+    write(path, s.replace(old, new))
 
 edit("ggml/src/ggml-cuda/common.cuh", "#include <unordered_map>\n", "#include <unordered_map>\n#include <unordered_set>\n")
 edit("ggml/src/ggml-cuda/common.cuh", "    int curr_stream_no = 0;\n", '''    int curr_stream_no = 0;

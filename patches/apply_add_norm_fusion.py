@@ -1,10 +1,19 @@
 # Issue #3, fusion 1: residual ADD -> RMS_NORM -> MUL (norm weight) as one CUDA kernel in a private llama.cpp
 # (b11434 / 5e03bdd87). Run from the llama.cpp root. GGML_CUDA_NO_ADD_NORM_FUSION=1 switches it off at run time.
-import sys
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def write(path, s):
+    with open(path, "w") as f:
+        f.write(s)
+
+
 def edit(path, old, new, count=1):
-    s = open(path).read()
-    assert s.count(old) == count, (path, old[:60], s.count(old))
-    open(path, "w").write(s.replace(old, new))
+    s = read(path)
+    assert s.count(old) == count, (path, old[:70], s.count(old))
+    write(path, s.replace(old, new))
 
 edit("ggml/src/ggml-cuda/norm.cu", "template <int block_size>\nstatic __global__ void rms_norm_back_f32(", r'''// Residual add, then the next norm (ADD -> RMS_NORM -> MUL by the norm weight), in one kernel: s = a + b is written
 // out (the residual stream still needs it) and dst = norm(s) * w. The same loop, reduction and expression order as
