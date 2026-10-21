@@ -95,16 +95,23 @@ IQ2_XS (~10% faster with the clock locked).
   unpacks two codes per instruction into fp16 pairs, multiplies in half2, lets one activation load serve several rows
   and splits short tables across warps; `fused_q4_v3_fp32in` adds the fp32 -> fp16 conversion by one rule (in the
   kernel at 1 token and on expert-sized tables up to 4 tokens, a separate step otherwise). At 8 tokens (30 rounds)
-  it is at or below llama.cpp's Q4_0 on 4 of 10: three of the four expert tables (5-13% less time) and Qwen3-1.7B's
+  it is at or below llama.cpp's Q4_0 on 4 of 9 (Qwen3-1.7B's gate + up + SwiGLU counted as one, in place of its
+  MLP-up table, at every token count): three of the four expert tables (5-13% less time) and Qwen3-1.7B's
   gate + up + SwiGLU (49.0 us vs 54.1 -- ours stacks gate and up into one table and converts once; llama.cpp runs
   them as two calls at 2-8 tokens). The big tables take 2-18% longer (Flash-Next attention 54.2 us vs 53.1; it was
   83 before the rebuild); the 6,144-long rows (attention out, MLP down) are the furthest behind. At 2 and 4 tokens:
-  6 and 4 of 10. Without the ~2 us conversion step Flash-Next attention and Qwen3-1.7B MLP up would be ahead and Qwen3.6
-  attention level -- the
-  conversion is the gap there, and folding it into the step that makes the activations is issue #3's work.
+  6 and 4 of 9. Without the ~2 us conversion step Flash-Next attention and Qwen3-1.7B MLP up would be ahead and Qwen3.6
+  attention level -- the conversion is the gap there, and folding it into the step that makes the activations is
+  issue #3's work.
   Precision: products and short partial sums are rounded to fp16, so it is checked like cuBLAS fp16 (2e-3), also
   with large activations planted (+-20000..60000, as real down_proj inputs) and tiny ones; weights are unpacked as
-  (code - 8) / 32, so no fp16 activation can overflow a partial sum (the first version, / 8, failed the large case).
+  (code - 8) / 32 (/ 64 where a lane sums two words), so no fp16 activation can overflow a partial sum (the first version, / 8, failed the large case).
+  **Limit:** activations above 65,504 in fp32 do not fit fp16 at all and come out as infinity -- llama.cpp's 8-bit
+  conversion scales each block, so it has no such limit. A model whose activations go that high (some down_proj
+  inputs do) needs them rescaled first, as the [FP16 fixer](https://github.com/christopherrobertbrooks-tech/fp16-fixer) does.
+  **Clock:** in this run our side touched the V100's 250 W power cap in 24 of its 30 rounds (33 of 4,379 busy
+  100 ms samples, 0.75%, lowest 1,342 MHz); llama.cpp's side never did (0 of 16,974). Which of our kernels was
+  running during each dip isn't recorded; in issue #7's run the same kind of dips moved results by 0.04%.
 - **Where we lose:** prompts. The rebuilt tensor-core kernel (`tc_q4_v2`) runs at 51-62% of cuBLAS's speed at 512
   tokens on the big tables (see [STAGE3.md](STAGE3.md)); it beats cuBLAS up to ~128 tokens.
 - **The times table loses on this card.** Against a badly built multiply kernel it looked 13-17% faster; against a good
