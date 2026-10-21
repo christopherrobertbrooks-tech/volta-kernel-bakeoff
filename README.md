@@ -77,7 +77,7 @@ IQ2_XS (~10% faster with the clock locked).
 
 - **4-bit, one token, like for like** (`fused_q4_v3_fp32in`: fp32 activations in, the conversion counted; 30
   clock-locked rounds, [results/2026-10-20-gap8-30r](results/2026-10-20-gap8-30r/like-for-like.txt)): at or below
-  llama.cpp's Q4_0 on 8 of 9 -- 1-10% less time on the big tables, 10-48% on the expert-sized ones. The ninth is
+  llama.cpp's Q4_0 on 8 of 9 -- 1-9% less time on the big tables, 9-32% on the expert-sized ones. The ninth is
   Qwen3-1.7B's gate + up + SwiGLU, which llama.cpp runs at one token as one fused call: 27.65 us against 27.20 (2%
   slower). (Without the conversion counted, the table above, ours looked 7-30% faster on 7 of 9.)
 - **2-bit, one token:** ours takes 12-49% less time than llama.cpp's Q2_K, but Q2_K is a more complex format (a scale
@@ -95,11 +95,12 @@ IQ2_XS (~10% faster with the clock locked).
   unpacks two codes per instruction into fp16 pairs, multiplies in half2, lets one activation load serve several rows
   and splits short tables across warps; `fused_q4_v3_fp32in` adds the fp32 -> fp16 conversion by one rule (in the
   kernel at 1 token and on expert-sized tables up to 4 tokens, a separate step otherwise). At 8 tokens (30 rounds)
-  it is at or below llama.cpp's Q4_0 on 4 of 10: three of the four expert tables (5-15% less time) and Qwen3-1.7B's
+  it is at or below llama.cpp's Q4_0 on 4 of 10: three of the four expert tables (5-13% less time) and Qwen3-1.7B's
   gate + up + SwiGLU (49.0 us vs 54.1 -- ours stacks gate and up into one table and converts once; llama.cpp runs
   them as two calls at 2-8 tokens). The big tables take 2-18% longer (Flash-Next attention 54.2 us vs 53.1; it was
   83 before the rebuild); the 6,144-long rows (attention out, MLP down) are the furthest behind. At 2 and 4 tokens:
-  6 and 4 of 10. Without the ~2 us conversion step the big attention and MLP-up tables would be at or ahead -- the
+  6 and 4 of 10. Without the ~2 us conversion step Flash-Next attention and Qwen3-1.7B MLP up would be ahead and Qwen3.6
+  attention level -- the
   conversion is the gap there, and folding it into the step that makes the activations is issue #3's work.
   Precision: products and short partial sums are rounded to fp16, so it is checked like cuBLAS fp16 (2e-3), also
   with large activations planted (+-20000..60000, as real down_proj inputs) and tiny ones; weights are unpacked as
