@@ -1,6 +1,6 @@
 """Summarise a bench/fuse-ab.sh run: per side medians, and the per-round paired ratio (on / off in the same round),
 which cancels slow drift in the machine's speed. Optional: a time window (HH:MM-HH:MM) to report rounds inside and
-outside it separately (e.g. while another job was running on the box)."""
+outside it separately (e.g. while another job was running on the box), or a round range (r14-30)."""
 import csv
 import glob
 import re
@@ -27,6 +27,9 @@ def main(d, window=None):
     def inside(r):
         if not window:
             return False
+        if window.startswith("r"):
+            a, b = window[1:].split("-")
+            return int(a) <= r <= int(b)
         a, b = window.split("-")
         return any(a <= times.get((r, s), "99:99") <= b for s in ("on", "off"))
 

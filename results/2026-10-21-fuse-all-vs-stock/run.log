@@ -1,0 +1,134 @@
+GPU clocks set to "(gpuClkMin 1380, gpuClkMax 1380)" for GPU 00000000:05:00.0
+
+Warning: persistence mode is disabled on device 00000000:05:00.0. See the Known Issues section of the nvidia-smi(1) man page for more information. Run with [--help | -h] switch to get more information on how to enable persistence mode.
+All done.
+2026-10-21 18:26:00 model /mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf; binary /home/chris/llama.cpp-fuse/build-sm70/bin; off = GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1
+2026-10-21 18:26:00 llama.cpp: 478e0a253 CUDA: rms_norm writes its own q8_1 copy into the conversion cache (private, volta-kernel-bakeoff #3); uncommitted: ; diff sha256 e3b0c44298fc1c14
+round on-1 under load: 372 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:27:20 round 1 on: 93.190259 tok/s
+round off-1 under load: 374 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:28:39 round 1 off: 88.896809 tok/s
+round off-2 under load: 366 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:29:57 round 2 off: 88.931712 tok/s
+round on-2 under load: 412 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:31:20 round 2 on: 93.299572 tok/s
+round on-3 under load: 357 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:32:34 round 3 on: 93.353426 tok/s
+round off-3 under load: 397 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:33:56 round 3 off: 88.933683 tok/s
+round off-4 under load: 421 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:35:17 round 4 off: 88.910715 tok/s
+round on-4 under load: 355 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:36:31 round 4 on: 93.174285 tok/s
+round on-5 under load: 363 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:37:47 round 5 on: 93.301082 tok/s
+round off-5 under load: 380 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:39:06 round 5 off: 88.730326 tok/s
+round off-6 under load: 404 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:40:24 round 6 off: 88.791826 tok/s
+round on-6 under load: 390 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:41:43 round 6 on: 93.415818 tok/s
+round on-7 under load: 389 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:42:58 round 7 on: 93.196018 tok/s
+round off-7 under load: 368 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:44:14 round 7 off: 89.567908 tok/s
+round off-8 under load: 383 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:45:31 round 8 off: 90.667510 tok/s
+round on-8 under load: 372 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:46:49 round 8 on: 95.110788 tok/s
+round on-9 under load: 422 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:48:10 round 9 on: 95.116279 tok/s
+round off-9 under load: 408 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:49:32 round 9 off: 89.824511 tok/s
+round off-10 under load: 405 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:50:53 round 10 off: 90.575113 tok/s
+round on-10 under load: 393 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:52:23 round 10 on: 94.954261 tok/s
+round on-11 under load: 362 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:53:54 round 11 on: 94.896988 tok/s
+round off-11 under load: 406 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:55:32 round 11 off: 90.534567 tok/s
+round off-12 under load: 378 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:57:00 round 12 off: 90.486470 tok/s
+round on-12 under load: 391 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 18:58:48 round 12 on: 94.944309 tok/s
+round on-13 under load: 412 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:00:13 round 13 on: 95.066272 tok/s
+round off-13 under load: 426 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:01:40 round 13 off: 89.828008 tok/s
+round off-14 under load: 392 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:03:14 round 14 off: 90.475597 tok/s
+round on-14 under load: 357 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:04:28 round 14 on: 94.819743 tok/s
+round on-15 under load: 362 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:05:44 round 15 on: 94.987423 tok/s
+round off-15 under load: 408 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:07:07 round 15 off: 90.160629 tok/s
+round off-16 under load: 356 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:08:21 round 16 off: 90.454079 tok/s
+round on-16 under load: 391 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:09:41 round 16 on: 94.976269 tok/s
+round on-17 under load: 381 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:10:58 round 17 on: 94.875597 tok/s
+round off-17 under load: 372 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:12:15 round 17 off: 90.444519 tok/s
+round off-18 under load: 400 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:13:36 round 18 off: 90.400432 tok/s
+round on-18 under load: 342 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:14:50 round 18 on: 94.994268 tok/s
+round on-19 under load: 420 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:16:11 round 19 on: 94.941675 tok/s
+round off-19 under load: 389 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:17:30 round 19 off: 90.428085 tok/s
+round off-20 under load: 378 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:18:49 round 20 off: 90.436530 tok/s
+round on-20 under load: 370 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:20:05 round 20 on: 94.865616 tok/s
+round on-21 under load: 363 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:21:20 round 21 on: 94.991561 tok/s
+round off-21 under load: 400 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:22:42 round 21 off: 90.509778 tok/s
+round off-22 under load: 400 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:24:02 round 22 off: 90.349742 tok/s
+round on-22 under load: 365 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:25:18 round 22 on: 95.005837 tok/s
+round on-23 under load: 375 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:26:37 round 23 on: 95.420131 tok/s
+round off-23 under load: 369 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:27:54 round 23 off: 90.520884 tok/s
+round off-24 under load: 385 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:29:14 round 24 off: 90.542409 tok/s
+round on-24 under load: 355 busy samples, SM clock min 1380 MHz, max 39 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:30:31 round 24 on: 94.881892 tok/s
+round on-25 under load: 377 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:31:49 round 25 on: 94.937759 tok/s
+round off-25 under load: 343 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:33:00 round 25 off: 90.439337 tok/s
+round off-26 under load: 368 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:34:21 round 26 off: 90.406842 tok/s
+round on-26 under load: 364 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:35:39 round 26 on: 94.994530 tok/s
+round on-27 under load: 413 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:37:03 round 27 on: 94.992273 tok/s
+round off-27 under load: 358 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:38:21 round 27 off: 90.430127 tok/s
+round off-28 under load: 383 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:39:39 round 28 off: 90.249898 tok/s
+round on-28 under load: 396 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:40:57 round 28 on: 94.964922 tok/s
+round on-29 under load: 379 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:42:12 round 29 on: 98.556396 tok/s
+round off-29 under load: 387 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:43:27 round 29 off: 91.120107 tok/s
+round off-30 under load: 385 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:44:43 round 30 off: 91.728960 tok/s
+round on-30 under load: 406 busy samples, SM clock min 1380 MHz, max 38 C, 0 below 1380, 0 with other clock-event reasons
+2026-10-21 19:46:02 round 30 on: 94.877121 tok/s
+2026-10-21 19:51:20 on: text 1435 bytes; ub 512 Final estimate: PPL = 5.8300 +/- 0.13858; ub 8 Final estimate: PPL = 5.8202 +/- 0.13830
+2026-10-21 19:56:51 off: text 1435 bytes; ub 512 Final estimate: PPL = 5.8300 +/- 0.13858; ub 8 Final estimate: PPL = 5.8202 +/- 0.13830
+2026-10-21 19:56:51 greedy text IDENTICAL
+2026-10-21 19:56:51 perplexity -ub 512: all 40 chunks IDENTICAL
+2026-10-21 19:56:51 perplexity -ub 8: all 40 chunks IDENTICAL
+2026-10-21 19:56:51 clock: 0 of 60 bench runs flagged; 0 busy samples below 1380 MHz
+2026-10-21 19:56:51 FUSE-AB DONE
+All done.
