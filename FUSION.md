@@ -1,5 +1,8 @@
 # Issue #3: fusing llama.cpp's small per-token kernels on the V100
 
+**Finished 2026-10-23 (repository archived).** All five changes together: about +6% decode, as an estimate (four measured
+together +4.97%, the fifth +1.14%); never measured as one run.
+
 Work in progress on branch `fuse`. The changes live in a **private** llama.cpp copy: worktree `~/llama.cpp-fuse` on the
 gateway, branch `fuse`, from b11434 / `5e03bdd87`. They are applied by the scripts in [patches/](patches/), and none of
 this is sent upstream. Model: Qwen3.6-35B-A3B, Unsloth UD-Q4_K_XL; decode only.
@@ -20,7 +23,8 @@ multiplies take about half the time. The biggest pieces of the rest that llama.c
 [bench/fuse-ab.sh](bench/fuse-ab.sh) uses one binary with the change switched off by an environment variable, so
 nothing else differs between the two sides. Each run does:
 
-- 10 rounds of `llama-bench -p 0 -n 128 -r 3`, alternating which side goes first, SM clock locked at 1380 MHz;
+- `ROUNDS` rounds (10 to 30 here) of `llama-bench -p 0 -n 128 -r 3`, alternating which side goes first, SM clock locked
+  at 1380 MHz;
 - greedy text (256 tokens) on both sides, compared byte for byte;
 - `llama-perplexity` on 40 chunks of wiki.test.raw on both sides, compared chunk by chunk.
 
@@ -104,7 +108,7 @@ before measuring and logged the binaries' sha256 (`libggml-cuda.so` e88f013c0dfc
 - **Greedy text:** byte-identical.
 - **Perplexity:** all 40 chunks the same at `-ub 512` (5.8300) and `-ub 8` (5.8202).
 - **KL divergence** (`llama-perplexity --kl-divergence`, 4 chunks, the fused side against the stock side's saved log
-  probabilities): mean KLD 0.000000, maximum 0.000061 (`-ub 512`) / 0.000059 (`-ub 8`), RMS of the probability
+  probabilities): mean KLD 0.000000 (`-ub 512`) / 0.000001 (`-ub 8`), maximum 0.000061 / 0.000059, RMS of the probability
   difference 0.001%, same top token 100%. The maximum isn't zero because llama.cpp stores the reference log
   probabilities in 16 bits: **stock against its own saved run gives exactly the same numbers**. The two complete result
   tables (46 lines each: every chunk's perplexity to 6 decimals, every KLD and probability statistic) are
@@ -127,7 +131,9 @@ q8_1 copy, so the fold runs in 8-row batches too.
 **Issue #11** ([results/2026-10-22-q8-cache-streams](results/2026-10-22-q8-cache-streams)): the conversion cache now
 works on the main stream only ([apply_q8_cache_mainstream.py](patches/apply_q8_cache_mainstream.py)). The new tests (an
 in-place op, branches, two unsynced back-to-back runs; cache on vs off, with and without `GGML_CUDA_GRAPH_OPT=1`) pass,
-and each fails on a deliberately broken cache.
+and each fails on a deliberately broken cache. One limit (Grok): at `GGML_CUDA_GRAPH_OPT=1` these small graphs never
+  actually run on a second stream (the outputs are byte-identical at both settings), so the tests don't exercise the
+  multi-stream case; the fix covers it by construction, and it costs nothing on the main stream.
 
 ### How strong these numbers are
 
@@ -165,8 +171,6 @@ tensors that are nodes or leafs of the running graph. The first version's result
   GPU blocks.
 - **The rest of the done line.** The whole set still has to be measured stacked with MTP drafting and the 8-bit kernel
   swap, as issue #3 requires.
-- **CUDA graphs.** Grok's estimate: worth at most ~3% (10.9 ms of GPU time against 11.3 ms per token), if pre-Ampere
-  graphs can be enabled in this tree.
 - **Issue #11.** Fixed on this branch (main stream only); the multi-stream race itself is timing-dependent and not
   reproduced by any test.
 - **Next fusion candidates.** The router multiply -> top-k (40 pairs per token, 0.6 ms together) and the linear

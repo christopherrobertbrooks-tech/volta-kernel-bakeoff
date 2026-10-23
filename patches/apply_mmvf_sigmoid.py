@@ -83,7 +83,8 @@ edit(G, '''    bool fused_mul_mat_vec = false;
             const ggml_op ops3[3]    = { GGML_OP_MUL_MAT, GGML_OP_RESHAPE, GGML_OP_UNARY };
             const int     outputs[1] = { i + k };
             if (ggml_can_fuse_subgraph(cgraph, i, k + 1, k == 1 ? ops2 : ops3, outputs, 1) && sig->type == GGML_TYPE_F32 &&
-                ggml_is_contiguous(sig) && ggml_is_contiguous(node) && ggml_nelements(sig) == ggml_nelements(node)) {
+                ggml_is_contiguous(sig) && ggml_is_contiguous(node) && ggml_nelements(sig) == ggml_nelements(node) &&
+                ggml_cuda_check_fusion_memory_ranges(cgraph, i, k + 1, outputs, 1)) {   // every block reads all of src1
                 ggml_tensor out = *node;   // the multiply's own shape and strides, writing into the sigmoid's memory
                 out.data = sig->data;
                 ggml_cuda_mm_fusion_args_host fusion_data{};

@@ -21,6 +21,8 @@ are compared byte for byte:
 | sabotage: entries and slots kept across runs ([sabotage_q8_cache_noreset.py](../../patches/sabotage_q8_cache_noreset.py)) | same | same | **differs** | `sabotage-noreset.log` |
 
 Each break makes its test fail, at both GRAPH_OPT settings, which also shows the cache is engaged in these graphs.
+But at GRAPH_OPT=1 these small graphs never actually split onto a second stream (outputs are byte-identical at both
+settings), so GRAPH_OPT=1 is not a real multi-stream test (Grok's review).
 
 A first "no reset" sabotage kept the entries but still reset the arena offset. The tests passed it, correctly: the
 next run rewrote the very slot each stale entry pointed to, with that run's own data, so no stale value was read. The

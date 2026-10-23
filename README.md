@@ -1,9 +1,19 @@
 # volta-kernel-bakeoff
 
+> **Finished 2026-10-23 and archived.** What came out of it:
+> - **Our own kernels:** at one token our 4-bit kernel beats cuBLAS 2.6-3.2x and roughly matches llama.cpp. At 8 tokens
+>   and for prompts it loses: the tensor-core prompt kernel reached 57% of cuBLAS at 512 tokens, under its 70% bar
+>   ([STAGE3.md](STAGE3.md)), and the 8-token gap closed only to about a tie (issue #2).
+> - **Fusing llama.cpp's small kernels** ([FUSION.md](FUSION.md)): five fusions, about +6% faster decode on
+>   Qwen3.6-35B-A3B, with output identical to stock in every check (text, perplexity, KL divergence). That figure is an
+>   estimate: +4.97% measured for the first four together, times +1.14% for the fifth. Patches in [patches/](patches/).
+> - **On a V100 box, the CPU's power saving costs llama.cpp about 1.7% of decode speed:** its cores sleep between the
+>   host's steps.
+
 Our own quantized matrix-multiply kernels for the **Tesla V100** (sm_70, 2017), raced against **cuBLAS** (NVIDIA's
 fp16 tensor-core GEMM) and **llama.cpp's** own CUDA kernels, at the real table shapes of the models we run.
 
-*Work in progress (stage 3 planning: see below). Numbers below are medians over 30 rounds of every contender -- ours,
+*Numbers below are medians over 30 rounds of every contender -- ours,
 cuBLAS and llama.cpp -- in one session on 2026-10-20 with the SM clock locked; every round is in
 [results/2026-10-20](results/2026-10-20), medians in [medians.csv](results/2026-10-20/medians.csv)
 ([results/summarize.py](results/summarize.py)).*
