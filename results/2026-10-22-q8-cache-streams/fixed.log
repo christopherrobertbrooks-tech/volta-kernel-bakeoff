@@ -1,0 +1,12 @@
+llama.cpp: 49be8a17c CUDA: small f32 multiply -> sigmoid in one mul_mat_vec_f call (private, volta-kernel-bakeoff #3); uncommitted diff sha256 9d9383323486a2b3; libggml-cuda sha256 e88f013c0dfca047
+GRAPH_OPT=0 A1 (before the in-place op): cache on == cache off
+GRAPH_OPT=0 A2 (after it): cache on == cache off
+GRAPH_OPT=0 B (branches): cache on == cache off
+GRAPH_OPT=0 C (2nd of 2 unsynced runs): cache on == cache off
+GRAPH_OPT=0 instrument: cache-off run C differs from run B: True
+GRAPH_OPT=1 A1 (before the in-place op): cache on == cache off
+GRAPH_OPT=1 A2 (after it): cache on == cache off
+GRAPH_OPT=1 B (branches): cache on == cache off
+GRAPH_OPT=1 C (2nd of 2 unsynced runs): cache on == cache off
+GRAPH_OPT=1 instrument: cache-off run C differs from run B: True
+Q8CACHE TESTS PASSED
