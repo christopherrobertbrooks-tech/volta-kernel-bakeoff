@@ -1,6 +1,7 @@
 """Summarise a bench/fuse-ab.sh run: per side medians, and the per-round paired ratio (on / off in the same round),
-which cancels slow drift in the machine's speed. Optional: a time window (HH:MM-HH:MM) to report rounds inside and
-outside it separately (e.g. while another job was running on the box), or a round range (r14-30)."""
+which cancels slow drift in the machine's speed. Optional: a round range (r15-30) or a time window
+("YYYY-MM-DD HH:MM..YYYY-MM-DD HH:MM", full timestamps, so it works across midnight) to report rounds inside and outside
+it separately (e.g. while another job was running on the box). A round is inside a window if either side ended in it."""
 import csv
 import glob
 import re
@@ -12,7 +13,7 @@ def main(d, window=None):
     times = {}
     with open(f"{d}/run.log") as fh:
         for line in fh:
-            m = re.match(r"\S+ (\d\d:\d\d):\d\d round (\d+) (on|off): ([\d.]+) tok/s", line)
+            m = re.match(r"(\S+ \d\d:\d\d):\d\d round (\d+) (on|off): ([\d.]+) tok/s", line)
             if m:
                 times[(int(m.group(2)), m.group(3))] = m.group(1)
     tok = {}
@@ -30,8 +31,8 @@ def main(d, window=None):
         if window.startswith("r"):
             a, b = window[1:].split("-")
             return int(a) <= r <= int(b)
-        a, b = window.split("-")
-        return any(a <= times.get((r, s), "99:99") <= b for s in ("on", "off"))
+        a, b = window.split("..")
+        return any(a <= times.get((r, s), "9999") <= b for s in ("on", "off"))
 
     groups = {"all": rounds}
     if window:

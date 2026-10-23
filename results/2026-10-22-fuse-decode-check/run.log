@@ -1,0 +1,17 @@
+GPU clocks set to "(gpuClkMin 1380, gpuClkMax 1380)" for GPU 00000000:05:00.0
+
+Warning: persistence mode is disabled on device 00000000:05:00.0. See the Known Issues section of the nvidia-smi(1) man page for more information. Run with [--help | -h] switch to get more information on how to enable persistence mode.
+All done.
+2026-10-22 21:55:57 model /mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf; binary /home/chris/llama.cpp-fuse/build-sm70/bin; off = GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1 GGML_CUDA_NO_MMVF_SIGMOID_FUSION=1
+2026-10-22 21:55:57 llama.cpp: bcc1ffe7d CUDA: q8_1 conversion cache on the main stream only (private, volta-kernel-bakeoff #11); uncommitted: none; diff sha256 e3b0c44298fc1c14
+2026-10-22 21:55:57 binaries: e88f013c0dfca047 libggml-cuda.so; e88f013c0dfca047 libggml-cuda.so.0; e88f013c0dfca047 libggml-cuda.so.0.26.0; 076f2da6d39d6fe9 llama-bench; 061bdac97bfd16f5 llama-perplexity; 
+2026-10-22 22:01:25 on: text 1435 bytes; ub 512 Final estimate: PPL = 5.8300 +/- 0.13858; ub 8 Final estimate: PPL = 5.8202 +/- 0.13830
+2026-10-22 22:06:46 off: text 1435 bytes; ub 512 Final estimate: PPL = 5.8300 +/- 0.13858; ub 8 Final estimate: PPL = 5.8202 +/- 0.13830
+2026-10-22 22:06:46 greedy text IDENTICAL
+2026-10-22 22:06:46 perplexity -ub 512: all 40 chunks IDENTICAL
+2026-10-22 22:06:46 perplexity -ub 8: all 40 chunks IDENTICAL
+2026-10-22 22:09:28 KL divergence -ub 512: chunk PPL ln(PPL(Q)/PPL(base)) KL Divergence Δp RMS Same top p;Mean KLD: -0.000000 ± 0.000000;Maximum KLD: 0.000061;RMS Δp : 0.001 ± 0.000 %;Same top p: 100.000 ± 0.000 %;
+2026-10-22 22:12:19 KL divergence -ub 8: chunk PPL ln(PPL(Q)/PPL(base)) KL Divergence Δp RMS Same top p;Mean KLD: 0.000001 ± 0.000000;Maximum KLD: 0.000059;RMS Δp : 0.001 ± 0.000 %;Same top p: 100.000 ± 0.000 %;
+2026-10-22 22:12:19 clock: 0 of 0 bench runs flagged; 0 busy samples below 1380 MHz
+2026-10-22 22:12:19 FUSE-AB DONE
+All done.

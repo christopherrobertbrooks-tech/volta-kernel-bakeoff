@@ -1,0 +1,9 @@
+# The Nsight Systems trace behind FUSION.md's per-token counts (gateway, 2026-10-21 ~19:58, llama.cpp-fuse 478e0a253,
+# CPU in bench mode). llama-bench -n 16 runs 16 measured tokens plus one warmup token: 17 decode graph runs, so the
+# per-token counts are the totals / 17.
+B=~/llama.cpp-fuse/build-sm70/bin; M=/mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+# on:  env
+# off: env GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1
+CUDA_VISIBLE_DEVICES=<V100> $E nsys profile -o tg16-$side --force-overwrite true -t cuda --cuda-graph-trace=node \
+    $B/llama-bench -m $M -ngl 99 -fa 1 -p 0 -n 16 -r 1
+nsys stats --report cuda_gpu_kern_sum --format csv --output tg16-$side tg16-$side.nsys-rep

@@ -1,0 +1,97 @@
+diff --git a/ggml/src/ggml-cuda/common.cuh b/ggml/src/ggml-cuda/common.cuh
+index c4ac60fb3..b5f5bb024 100644
+--- a/ggml/src/ggml-cuda/common.cuh
++++ b/ggml/src/ggml-cuda/common.cuh
+@@ -1632,6 +1632,7 @@ struct ggml_cuda_mm_fusion_args_host {
+     const ggml_tensor * shared_up = nullptr;
+     const ggml_tensor * shared_gate = nullptr;
+     ggml_tensor * shared_dst = nullptr;
++    bool sigmoid_out = false;   // private (#3): apply sigmoid to the output (mul_mat_vec_f only)
+ };
+ struct ggml_cuda_mm_fusion_args_device {
+     const void * x_bias = nullptr;
+@@ -1645,6 +1646,7 @@ struct ggml_cuda_mm_fusion_args_device {
+     const void * shared_gate = nullptr;
+     float * shared_dst = nullptr;
+     uint32_t shared_stride_col_dst = 0;
++    bool sigmoid_out = false;
+ };
+ 
+ struct ggml_cuda_kernel_launch_params {
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 3958ef6eb..daa9cc92b 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -3773,6 +3773,32 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+         }
+     }
+ 
++    // private (#3): small f32/f16 multiply -> sigmoid, MUL_MAT [-> RESHAPE] -> UNARY(sigmoid), in one mul_mat_vec_f call
++    // that writes the sigmoid's tensor. GGML_CUDA_NO_MMVF_SIGMOID_FUSION=1 switches it off.
++    static const bool no_mmvf_sigmoid = getenv("GGML_CUDA_NO_MMVF_SIGMOID_FUSION") != nullptr && atoi(getenv("GGML_CUDA_NO_MMVF_SIGMOID_FUSION"));
++    if (!no_mmvf_sigmoid && node->op == GGML_OP_MUL_MAT && ggml_cuda_should_fuse_mul_mat_vec_f(node)) {
++        int k = 1;   // index offset of the sigmoid
++        if (i + 1 < cgraph->n_nodes && cgraph->nodes[i + 1]->op == GGML_OP_RESHAPE && cgraph->nodes[i + 1]->src[0] == node) {
++            k = 2;
++        }
++        ggml_tensor * sig = i + k < cgraph->n_nodes ? cgraph->nodes[i + k] : nullptr;
++        if (sig && sig->op == GGML_OP_UNARY && ggml_get_unary_op(sig) == GGML_UNARY_OP_SIGMOID &&
++            sig->src[0] == cgraph->nodes[i + k - 1]) {
++            const ggml_op ops2[2]    = { GGML_OP_MUL_MAT, GGML_OP_UNARY };
++            const ggml_op ops3[3]    = { GGML_OP_MUL_MAT, GGML_OP_RESHAPE, GGML_OP_UNARY };
++            const int     outputs[1] = { i + k };
++            if (ggml_can_fuse_subgraph(cgraph, i, k + 1, k == 1 ? ops2 : ops3, outputs, 1) && sig->type == GGML_TYPE_F32 &&
++                ggml_is_contiguous(sig) && ggml_is_contiguous(node) && ggml_nelements(sig) == ggml_nelements(node)) {
++                ggml_tensor out = *node;   // the multiply's own shape and strides, writing into the sigmoid's memory
++                out.data = sig->data;
++                ggml_cuda_mm_fusion_args_host fusion_data{};
++                fusion_data.sigmoid_out = true;
++                ggml_cuda_mul_mat_vec_f(*cuda_ctx, node->src[0], node->src[1], nullptr, &out, &fusion_data);
++                return k;
++            }
++        }
++    }
++
+     bool fused_mul_mat_vec = false;
+     int  fused_node_count  = 0;
+ 
+diff --git a/ggml/src/ggml-cuda/mmvf.cu b/ggml/src/ggml-cuda/mmvf.cu
+index d0a572e15..d66133706 100644
+--- a/ggml/src/ggml-cuda/mmvf.cu
++++ b/ggml/src/ggml-cuda/mmvf.cu
+@@ -375,6 +375,9 @@ static __global__ void mul_mat_vec_f(
+                     break;
+             }
+         }
++        if (fusion.sigmoid_out) {   // op_sigmoid in unary.cu
++            value = 1.0f / (1.0f + expf(-value));
++        }
+     }
+ 
+     dst[tid*stride_col_dst + row] = value;
+@@ -395,7 +398,7 @@ static void mul_mat_vec_f_switch_fusion(
+ 
+     const ggml_cuda_kernel_launch_params launch_params = {block_nums, block_dims, nbytes_shared, stream};
+ 
+-    const bool has_fusion = fusion.gate != nullptr || fusion.x_bias != nullptr || fusion.gate_bias != nullptr;
++    const bool has_fusion = fusion.gate != nullptr || fusion.x_bias != nullptr || fusion.gate_bias != nullptr || fusion.sigmoid_out;
+     if constexpr (ncols_dst == 1) {
+         if (has_fusion) {
+             ggml_cuda_kernel_launch(mul_mat_vec_f<T, type_acc, ncols_dst, block_size, true, is_multi_token_id>, launch_params,
+@@ -450,7 +453,7 @@ void launch_mul_mat_vec_f_cuda(
+         }
+     }
+ 
+-    const bool has_fusion = fusion.gate != nullptr || fusion.x_bias != nullptr || fusion.gate_bias != nullptr;
++    const bool has_fusion = fusion.gate != nullptr || fusion.x_bias != nullptr || fusion.gate_bias != nullptr || fusion.sigmoid_out;
+ 
+     const int nbytes_shared = warp_size*sizeof(float) + (has_fusion ? warp_size*sizeof(float) : 0);
+     const dim3 block_nums(nrows, nchannels_dst, nsamples_or_ntokens);
+@@ -682,6 +685,7 @@ void ggml_cuda_mul_mat_vec_f(ggml_backend_cuda_context & ctx, const ggml_tensor
+         }
+         fusion_local.glu_op = fusion->glu_op;
+         fusion_local.glu_limit = fusion->glu_limit;
++        fusion_local.sigmoid_out = fusion->sigmoid_out;
+     }
+ 
+     const int64_t s01 = src0->nb[1] / ts_src0;

@@ -24,6 +24,9 @@ say "model $M; binary $B; off = $OFF"
 U=$(git -C $SRC diff --stat | tail -1 | sed 's/^ *//')
 say "llama.cpp: $(git -C $SRC log -1 --format='%h %s'); uncommitted: ${U:-none}; diff sha256 $(git -C $SRC diff | sha256sum | cut -c1-16)"
 git -C $SRC diff > $R/uncommitted.diff
+# rebuild from exactly that tree, so the binary is what the log names (llama-bench's own build_commit can be stale)
+cmake --build $B/.. -j 16 --target llama-bench llama-perplexity llama-completion >> $R/build.log 2>&1 || { say "build FAILED"; exit 1; }
+say "binaries: $(cd $B && sha256sum libggml-cuda.so* llama-bench llama-perplexity 2>/dev/null | awk '!/->/ {printf "%s %s; ", substr($1,1,16), $2}')"
 sample_start() { nvidia-smi -i $V100 --query-gpu=timestamp,clocks.sm,clocks.mem,power.draw,temperature.gpu,utilization.gpu,clocks_event_reasons.active,ecc.errors.uncorrected.volatile.total --format=csv,noheader -lms 100 > $R/gpu-load-$1.csv 2>/dev/null & S=$!; }
 sample_stop() { kill $S 2>/dev/null; wait $S 2>/dev/null; python3 bench/load_flag.py "$1" $R/gpu-load-$1.csv >> $L; }
 for r in $(seq 1 ${ROUNDS:-10}); do
@@ -51,6 +54,17 @@ cmp -s $R/text-on.txt $R/text-off.txt && say "greedy text IDENTICAL" || say "gre
 for ub in 512 8; do
   n=$(wc -l < $R/ppl-chunks-on-ub$ub.txt)
   cmp -s $R/ppl-chunks-on-ub$ub.txt $R/ppl-chunks-off-ub$ub.txt && say "perplexity -ub $ub: all $n chunks IDENTICAL" || say "perplexity -ub $ub: chunks DIFFER"
+done
+# logit-level identity: KL divergence of the fused side against the stock side's saved log-probabilities (4 chunks;
+# identical output gives Mean KLD 0 and same top token 100%). The base files (~1 GB each) go to /tmp and to the trash.
+for ub in 512 8; do
+  KB=/tmp/fuse-ab-kld-$NAME-ub$ub.bin
+  env $OFF $B/llama-perplexity -m $M -ngl 99 -fa 1 -f /mnt/steam/gsq-gguf/results/ppl/wiki.test.raw -c 512 --chunks 4 \
+      -ub $ub --kl-divergence-base $KB > $R/kld-base-ub$ub.txt 2>&1
+  $B/llama-perplexity -m $M -ngl 99 -fa 1 -c 512 --chunks 4 -ub $ub --kl-divergence-base $KB --kl-divergence \
+      > $R/kld-on-ub$ub.txt 2>&1
+  say "KL divergence -ub $ub: $(grep -E 'Mean +KLD|Maximum KLD|Same top p|RMS Δp' $R/kld-on-ub$ub.txt | tr -s ' ' | tr '\n' ';')"
+  gio trash $KB 2>/dev/null
 done
 say "clock: $(grep -c FLAGGED $L) of $(grep -c 'under load' $L) bench runs flagged; $(grep -o '[0-9]* below 1380' $L | awk '{s+=$1} END {print s+0}') busy samples below 1380 MHz"
 say "FUSE-AB DONE"

@@ -1,0 +1,3 @@
+# decode, 17 steps per side; counts per token (totals / 17). on = all five; off = all but the sigmoid fusion
+on: kernels 1221 | unary_op_kernel<op_sigmoid> 0 | mul_mat_vec_f 140 (with fusion 147) | GPU busy 10.193 ms
+off: kernels 1291 | unary_op_kernel<op_sigmoid> 70 | mul_mat_vec_f 140 (with fusion 77) | GPU busy 10.303 ms

@@ -1,0 +1,1 @@
+all: 20 rounds | off median 94.94 | on median 95.99 | paired gain median +1.14% (min -0.61%, max +1.67%) | on faster in 19/20

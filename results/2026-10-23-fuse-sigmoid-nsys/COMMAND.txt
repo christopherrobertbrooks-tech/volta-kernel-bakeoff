@@ -1,0 +1,5 @@
+llama.cpp: b327d9316 CUDA: sigmoid fusion checks fusion memory ranges like upstream (review of volta-kernel-bakeoff #3); diff sha256 e3b0c44298fc1c14
+libggml-cuda sha256 053717724004b683
+per side: CUDA_VISIBLE_DEVICES=<V100> [env GGML_CUDA_NO_MMVF_SIGMOID_FUSION=1] nsys profile -o tg16-<side> --force-overwrite true -t cuda --cuda-graph-trace=node \
+    /home/chris/llama.cpp-fuse/build-sm70/bin/llama-bench -m /mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf -ngl 99 -fa 1 -p 0 -n 16 -r 1   (16 tokens + 1 warmup = 17 decode steps)
+  then: nsys stats --report cuda_gpu_kern_sum --format csv --output tg16-<side> tg16-<side>.nsys-rep

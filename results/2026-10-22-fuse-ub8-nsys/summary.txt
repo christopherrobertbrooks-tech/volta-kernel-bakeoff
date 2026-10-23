@@ -1,0 +1,7 @@
+# llama-perplexity -ub 8 --chunks 2 (2 x 512 tokens = 128 eight-row batches), everything on vs stock; kernel totals
+# from Nsight Systems with --cuda-graph-trace=node (command in COMMAND.txt). Perplexity per chunk: identical ([1]4.0325 [2]5.7285).
+on : kernels  204114  quantize_q8_1  20705  mul_mat_vec_q  42635  add_rms_norm_mul_f32  10449
+         5160  void add_rms_norm_mul_f32<(int)1024, (int)3>(add_terms, floa
+         5160  void add_rms_norm_mul_f32<(int)1024, (int)2>(add_terms, floa
+          129  void add_rms_norm_mul_f32<(int)1024, (int)0>(add_terms, floa
+off: kernels  236364  quantize_q8_1  42635  mul_mat_vec_q  42635  add_rms_norm_mul_f32      0

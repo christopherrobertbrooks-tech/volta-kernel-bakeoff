@@ -1,0 +1,13 @@
+===== SABOTAGE: inplace
+llama.cpp: bcc1ffe7d CUDA: q8_1 conversion cache on the main stream only (private, volta-kernel-bakeoff #11); uncommitted diff sha256 bd164b86ac35a4ee; libggml-cuda sha256 92167ce12ebdcf7b
+GRAPH_OPT=0 A1 (before the in-place op): cache on == cache off
+GRAPH_OPT=0 A2 (after it): cache on DIFFERS FROM cache off
+GRAPH_OPT=0 B (branches): cache on == cache off
+GRAPH_OPT=0 C (2nd of 2 unsynced runs): cache on == cache off
+GRAPH_OPT=0 instrument: cache-off run C differs from run B: True
+GRAPH_OPT=1 A1 (before the in-place op): cache on == cache off
+GRAPH_OPT=1 A2 (after it): cache on DIFFERS FROM cache off
+GRAPH_OPT=1 B (branches): cache on == cache off
+GRAPH_OPT=1 C (2nd of 2 unsynced runs): cache on == cache off
+GRAPH_OPT=1 instrument: cache-off run C differs from run B: True
+Q8CACHE TESTS FAILED

@@ -1,0 +1,13 @@
+===== SABOTAGE: noreset (entries and slots kept)
+llama.cpp: bcc1ffe7d CUDA: q8_1 conversion cache on the main stream only (private, volta-kernel-bakeoff #11); uncommitted diff sha256 72b5a4a6e451d1e5; libggml-cuda sha256 fc35eaa77755d4e1
+GRAPH_OPT=0 A1 (before the in-place op): cache on == cache off
+GRAPH_OPT=0 A2 (after it): cache on == cache off
+GRAPH_OPT=0 B (branches): cache on == cache off
+GRAPH_OPT=0 C (2nd of 2 unsynced runs): cache on DIFFERS FROM cache off
+GRAPH_OPT=0 instrument: cache-off run C differs from run B: True
+GRAPH_OPT=1 A1 (before the in-place op): cache on == cache off
+GRAPH_OPT=1 A2 (after it): cache on == cache off
+GRAPH_OPT=1 B (branches): cache on == cache off
+GRAPH_OPT=1 C (2nd of 2 unsynced runs): cache on DIFFERS FROM cache off
+GRAPH_OPT=1 instrument: cache-off run C differs from run B: True
+Q8CACHE TESTS FAILED
