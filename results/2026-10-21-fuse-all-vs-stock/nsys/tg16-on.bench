@@ -1,0 +1,22 @@
+WARNING: Device-side CUDA Event completion trace is currently enabled.
+         This may increase runtime overhead and the likelihood of false
+         dependencies across CUDA Streams. If you wish to avoid this, please
+         disable the feature with --cuda-event-trace=false.
+WARNING: CPU IP/backtrace sampling not supported, disabling.
+Try the 'nsys status --environment' command to learn more.
+
+WARNING: CPU context switch tracing not supported, disabling.
+Try the 'nsys status --environment' command to learn more.
+
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 32494 MiB):
+  Device 0: Tesla V100-PCIE-32GB, compute capability 7.0, VMM: yes, VRAM: 32494 MiB
+| model                          |       size |     params | backend    | ngl |  fa |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | --------------: | -------------------: |
+| qwen35moe 35B.A3B Q4_K - Medium |  21.27 GiB |    35.51 B | CUDA       |  99 |   1 |            tg16 |         72.71 ± 0.00 |
+
+build: bc38f70ad (4)
+Collecting data...
+Generating '/tmp/nsys-report-7ed3.qdstrm'
+[1/1] [0%                          ] tg16-on.nsys-rep[1/1] [0%                          ] tg16-on.nsys-rep[1/1] [5%                          ] tg16-on.nsys-rep[1/1] [6%                          ] tg16-on.nsys-rep[1/1] [7%                          ] tg16-on.nsys-rep[1/1] [8%                          ] tg16-on.nsys-rep[1/1] [9%                          ] tg16-on.nsys-rep[1/1] [10%                         ] tg16-on.nsys-rep[1/1] [11%                         ] tg16-on.nsys-rep[1/1] [=========46%                ] tg16-on.nsys-rep[1/1] [================69%         ] tg16-on.nsys-rep[1/1] [=================72%        ] tg16-on.nsys-rep[1/1] [========================100%] tg16-on.nsys-rep[1/1] [========================100%] tg16-on.nsys-rep
+Generated:
+	/mnt/steam/volta-kernel-bakeoff/results/2026-10-21-fuse-all-vs-stock/nsys/tg16-on.nsys-rep

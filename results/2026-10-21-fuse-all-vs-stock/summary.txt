@@ -1,0 +1,7 @@
+# 2026-10-21 stock (all fusions off) vs all four fusions, 30 rounds alternating, SM clock locked 1380 MHz (0 of 60 bench runs flagged)
+# CPU: rounds 1-6 power saving (governor powersave, all sleep states); rounds 7-13 the same while a 26 GB download ran
+# (it kept the CPU awake); rounds 14-30 bench mode (governor performance, C2/C3 off; switched 19:02:16, before round 14).
+all 30: 30 rounds | off median 90.43 | on median 94.94 | paired gain median +4.97% (min +3.43%, max +8.16%) | on faster in 30/30
+rounds 1-6 power saving: 6 rounds | off median 88.90 | on median 93.30 | paired gain median +4.94% (min +4.80%, max +5.21%) | on faster in 6/6
+rounds 7-13 download running: 7 rounds | off median 90.49 | on median 94.95 | paired gain median +4.90% (min +4.05%, max +5.89%) | on faster in 7/7
+rounds 14-30 bench mode: 17 rounds | off median 90.44 | on median 94.98 | paired gain median +5.00% (min +3.43%, max +8.16%) | on faster in 17/17
