@@ -48,8 +48,11 @@ The rows above are 10-round medians from four separate A/B runs, each against th
 
 ### One run, stock against all four ([results/2026-10-21-fuse-all-vs-stock](results/2026-10-21-fuse-all-vs-stock))
 
-This run tests everything at once (llama.cpp `478e0a253`, nothing uncommitted: the diff hash in the log is that of an
-empty diff). Stock means the same binary with `GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1`. It ran 30
+This run tests everything at once: llama.cpp `478e0a253`, nothing uncommitted (the diff hash in the log is that of an
+empty diff). One gap Grok found: the script didn't rebuild, and the `bench-*.csv` files report the binary's build as
+`bc38f70ad` (llama.cpp records the commit when it configures, so that can be stale). The norm folding was in the binary
+(Nsight shows its kernel), but a clean tree alone doesn't prove which binary ran. From 2026-10-22 the script rebuilds
+first and logs the binaries' sha256. Stock means the same binary with `GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1`. It ran 30
 rounds, alternating, with the SM clock locked and the V100 sampled every 100 ms; 0 of the 60 bench runs saw a clock
 dip.
 
@@ -57,17 +60,22 @@ dip.
 | --- | --- | ---: | ---: | --- | --- |
 | all 30 | | 90.43 | 94.94 | **+4.97%** (+3.43 to +8.16) | 30 / 30 |
 | 1-6 | power saving | 88.90 | 93.30 | +4.94% (+4.80 to +5.21) | 6 / 6 |
-| 7-13 | power saving, a 26 GB download running from 18:45 | 90.49 | 94.95 | +4.90% | 7 / 7 |
-| 14-30 | bench mode (performance governor, C2/C3 sleep off) | 90.44 | 94.98 | +5.00% | 17 / 17 |
+| 8-13 | power saving, a 26 GB download running (it started after round 7) | 90.51 | 95.01 | +4.91% (+4.82 to +5.89) | 6 / 6 |
+| 15-30 | bench mode (performance governor, C2/C3 sleep off) | 90.44 | 94.98 | +5.02% (+3.43 to +8.16) | 16 / 16 |
+
+Rounds 7 (+4.05%) and 14 (+4.80%) sit on the boundaries: bench mode was switched at 19:02:16, during round 14's stock
+run. Groups are by round number (`fuse_ab_summary.py r15-30`).
 
 The paired gain compares each round's two sides with each other, which cancels slow drift in the machine.
 
 - **Greedy text** was byte-identical.
-- **Perplexity was identical in all 40 chunks at both batch sizes:** 5.8300 with llama.cpp's default 512-row
-  batches, and 5.8202 with `-ub 8`. The 8-row batches exercise the norm folding, which only applies at 1-8 rows.
-  (5.8202 differs from 5.8300 on stock too; small batches add up in a different order.)
+- **Perplexity was identical in all 40 chunks at both batch sizes, to the 4 decimals llama.cpp prints:** 5.8300 with
+  llama.cpp's default 512-row batches, and 5.8202 with `-ub 8`. (5.8202 differs from 5.8300 on stock too; small batches
+  add up in a different order.) Matching printed values isn't bit identity; the KL-divergence check below is.
 
-**Nsight Systems** (16 tokens each way, `nsys/`) confirms where the gain comes from:
+**Nsight Systems** confirms where the gain comes from. Each side traced `llama-bench -n 16`, which is 16 tokens plus
+a warmup token, so 17 decode steps; the counts below are totals / 17. The command is in
+[nsys/COMMAND.txt](results/2026-10-21-fuse-all-vs-stock/nsys/COMMAND.txt), and the `.nsys-rep` traces are committed.
 
 | per token | stock | all four |
 | --- | ---: | ---: |
@@ -94,6 +102,11 @@ download gave, and left the fused gain unchanged. From stock on power saving (88
   paired medians don't depend on them.
 - **The perplexity text.** All perplexity checks use 40 chunks of wiki.test.raw at 512 context. Before this run, none
   of them exercised the norm folding.
+- **Where the remaining 121 conversions come from.** Nsight gives only the total. The per-input split comes from the
+  debug log (`GGML_CUDA_Q8_DEBUG=1`, a build that prints every conversion with its input's name):
+  [q8-conversions-by-input.txt](results/2026-10-21-fuse-all-vs-stock/q8-conversions-by-input.txt). Per token, 40 come
+  from the routed experts' down input and 40 from the shared expert's, so 80 feed the down projections. 30 are the
+  linear attention's gated output, 10 the full attention's, and 1 the final norm.
 
 **A bug the perplexity check caught.** The first version of the conversion cache gained the same +2.3% and produced
 identical greedy text, but its perplexity was 5.8296 against 5.8300. The cause was llama.cpp's per-expert fallback in
@@ -104,9 +117,16 @@ tensors that are nodes or leafs of the running graph. The first version's result
 
 ## Still open
 
-- **Remaining conversions.** 121 per token are not yet removed (201 distinct before the norm folding; confirmed by Nsight): the gated activations that feed the down
-  projections, the linear attention's gated output, and the full attention's gated output.
-- **The rest of the done line.** The whole set still has to be measured stacked with MTP drafting and the 8-bit
-  kernel swap, as issue #3 requires.
-- **A next step for the conversions.** 80 of the remaining 121 feed the down projections, and their inputs are only
-  512 wide. The multiply can convert those itself (2 KB per block), which removes the separate launch.
+- **Remaining conversions.** 121 per token are not yet removed (291 before; Nsight confirms the total, the debug log
+  the split). They are the gated activations that feed the down projections (80), the linear attention's gated output
+  (30), the full attention's gated output (10), and the final norm (1).
+- **Converting the down projections' inputs inside the multiply: looked at, not worth it.** Those inputs are only 512
+  wide, but `mul_mat_vec_q` splits each table over thousands of blocks, and every block would have to convert the whole
+  input again (over 1,000 blocks per expert). That likely costs more than the ~3 us launch it saves. Having the
+  activation kernel write the q8_1 copy doesn't fit either: each 32-value block of its output is computed by different
+  GPU blocks.
+- **The rest of the done line.** The whole set still has to be measured stacked with MTP drafting and the 8-bit kernel
+  swap, as issue #3 requires.
+- **CUDA graphs.** Grok's estimate: worth at most ~3% (10.9 ms of GPU time against 11.3 ms per token), if pre-Ampere
+  graphs can be enabled in this tree.
+- **Issue #11.** The conversion cache's arena reset is only safe on one stream.

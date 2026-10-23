@@ -174,12 +174,16 @@ static bool run(int cfg, int M, const uint32_t* q, const half* s, const XT* x, f
 //   expert-sized tables (<= 2.6M weights): long rows (K >= 2048) split over 4 warps, short rows one warp each;
 //   bigger tables: one token -> 2 warps per row, 2 words per lane; 2-8 tokens -> 4 rows per warp (one activation load
 //   serves 4 rows), split over more warps until there are >= 5120 (2 tokens) or 1280 (4-8 tokens) warps.
-// FQ3_CFG=<name> forces one variant (for tuning) on every path that picks one; -1 = not set
+// FQ3_CFG=<name> forces one variant (for tuning) on every path that picks one; -1 = not set. Read once per process
+// (launch-bound timing loops call this on every launch).
 static int fq3_cfg_override() {
-    if (const char* c = getenv("FQ3_CFG"))
-        for (int i = 0; i < fq3::NCFG; ++i)
-            if (!strcmp(c, fq3::CFGS[i].name)) return i;
-    return -1;
+    static const int forced = [] {
+        if (const char* c = getenv("FQ3_CFG"))
+            for (int i = 0; i < fq3::NCFG; ++i)
+                if (!strcmp(c, fq3::CFGS[i].name)) return i;
+        return -1;
+    }();
+    return forced;
 }
 static int fused_q4_v3_pick(int M, int N, int K) {
     if (const int forced = fq3_cfg_override(); forced >= 0) return forced;
