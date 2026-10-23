@@ -5,7 +5,8 @@
 //      conversion (x' is the same memory with different values).
 //   B  three multiplies reading one normed activation (branches the concurrent-stream optimiser can spread over
 //      streams), summed: y = W1 n + W2 n + W3 n, with n = rms_norm(x) * w.
-//   C  graph B run twice back to back with different inputs, queued without a sync in between; the second result is kept.
+//   C  graph B run twice back to back, first on input 1 then on input 2, queued without a sync in between; the result
+//      kept is the second run's. A cache that reused the first run's conversion would give input 1's answer here.
 // Weights: Q4_0, 2048 x 2048, random, quantized with llama.cpp's own quantizer; one token (the mul_mat_vec_q path).
 #include "ggml.h"
 #include "ggml-alloc.h"
@@ -91,12 +92,12 @@ int main(int argc, char ** argv) {
         ggml_backend_graph_compute(be, gf);
         ggml_backend_synchronize(be);
         dump(y);                                                   // B
-        ggml_backend_tensor_set_async(be, xb, vb2.data(), 0, K * sizeof(float));
-        ggml_backend_graph_compute_async(be, gf);                 // C: two runs queued, no sync between them
         ggml_backend_tensor_set_async(be, xb, vb1.data(), 0, K * sizeof(float));
+        ggml_backend_graph_compute_async(be, gf);                 // C: two runs queued, no sync between them
+        ggml_backend_tensor_set_async(be, xb, vb2.data(), 0, K * sizeof(float));
         ggml_backend_graph_compute_async(be, gf);
         ggml_backend_synchronize(be);
-        dump(y);                                                   // C: must equal B (same input vb1)
+        dump(y);                                                   // C: input 2's result
         ggml_gallocr_free(ga); ggml_free(g);
     }
     fclose(out);
