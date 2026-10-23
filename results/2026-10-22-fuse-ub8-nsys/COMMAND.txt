@@ -1,0 +1,6 @@
+llama.cpp: bcc1ffe7d CUDA: q8_1 conversion cache on the main stream only (private, volta-kernel-bakeoff #11); diff sha256 e3b0c44298fc1c14
+libggml-cuda sha256 e88f013c0dfca047
+off = GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1 GGML_CUDA_NO_MMVF_SIGMOID_FUSION=1
+per side: CUDA_VISIBLE_DEVICES=<V100> [env $OFF] nsys profile -o ub8-<side> --force-overwrite true -t cuda --cuda-graph-trace=node \
+    /home/chris/llama.cpp-fuse/build-sm70/bin/llama-perplexity -m /mnt/steam/Strata-data-qwen36/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf -ngl 99 -fa 1 -f /mnt/steam/gsq-gguf/results/ppl/wiki.test.raw -c 512 --chunks 2 -ub 8
+  then: nsys stats --report cuda_gpu_kern_sum --format csv --output ub8-<side> ub8-<side>.nsys-rep

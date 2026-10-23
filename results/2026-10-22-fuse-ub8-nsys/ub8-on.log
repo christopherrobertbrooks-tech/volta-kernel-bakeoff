@@ -1,0 +1,45 @@
+WARNING: Device-side CUDA Event completion trace is currently enabled.
+         This may increase runtime overhead and the likelihood of false
+         dependencies across CUDA Streams. If you wish to avoid this, please
+         disable the feature with --cuda-event-trace=false.
+WARNING: CPU IP/backtrace sampling not supported, disabling.
+Try the 'nsys status --environment' command to learn more.
+
+WARNING: CPU context switch tracing not supported, disabling.
+Try the 'nsys status --environment' command to learn more.
+
+0.00.717.551 W model has unused tensor blk.40.attn_norm.weight (size = 8192 bytes) -- ignoring
+0.00.717.555 W model has unused tensor blk.40.post_attention_norm.weight (size = 8192 bytes) -- ignoring
+0.00.717.560 W model has unused tensor blk.40.attn_q.weight (size = 17825792 bytes) -- ignoring
+0.00.717.562 W model has unused tensor blk.40.attn_k.weight (size = 1114112 bytes) -- ignoring
+0.00.717.563 W model has unused tensor blk.40.attn_v.weight (size = 1114112 bytes) -- ignoring
+0.00.717.569 W model has unused tensor blk.40.attn_output.weight (size = 8912896 bytes) -- ignoring
+0.00.717.571 W model has unused tensor blk.40.attn_q_norm.weight (size = 1024 bytes) -- ignoring
+0.00.717.573 W model has unused tensor blk.40.attn_k_norm.weight (size = 1024 bytes) -- ignoring
+0.00.717.574 W model has unused tensor blk.40.ffn_gate_inp.weight (size = 1048576 bytes) -- ignoring
+0.00.717.576 W model has unused tensor blk.40.ffn_down_exps.weight (size = 184549376 bytes) -- ignoring
+0.00.717.579 W model has unused tensor blk.40.ffn_gate_exps.weight (size = 150994944 bytes) -- ignoring
+0.00.717.581 W model has unused tensor blk.40.ffn_up_exps.weight (size = 150994944 bytes) -- ignoring
+0.00.717.583 W model has unused tensor blk.40.ffn_gate_inp_shexp.weight (size = 4096 bytes) -- ignoring
+0.00.717.585 W model has unused tensor blk.40.ffn_gate_shexp.weight (size = 1114112 bytes) -- ignoring
+0.00.717.586 W model has unused tensor blk.40.ffn_up_shexp.weight (size = 1114112 bytes) -- ignoring
+0.00.717.588 W model has unused tensor blk.40.ffn_down_shexp.weight (size = 1114112 bytes) -- ignoring
+0.00.717.590 W model has unused tensor blk.40.nextn.eh_proj.weight (size = 8912896 bytes) -- ignoring
+0.00.717.592 W model has unused tensor blk.40.nextn.enorm.weight (size = 8192 bytes) -- ignoring
+0.00.717.594 W model has unused tensor blk.40.nextn.hnorm.weight (size = 8192 bytes) -- ignoring
+0.00.717.599 W model has unused tensor blk.40.nextn.shared_head_norm.weight (size = 8192 bytes) -- ignoring
+1.19.278.721 I cmn          init: llama threadpool init, n_threads = 8
+1.19.368.913 I 
+1.19.370.443 I system_info: n_threads = 8 (n_threads_batch = 8) / 24 | CUDA : ARCHS = 700 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+1.19.370.455 I perplexity: tokenizing the input ..
+1.20.384.145 I perplexity: tokenization took 1013.68 ms
+1.20.384.285 I perplexity: calculating perplexity over 2 chunks, n_ctx=512, batch_size=2048, n_seq=4
+1.23.480.753 I perplexity: 3.10 seconds per pass - ETA 0.02 minutes
+[1]4.0325,[2]5.7285,
+1.23.548.218 I Final estimate: PPL = 5.7285 +/- 0.65767
+
+Collecting data...
+Generating '/tmp/nsys-report-2cf9.qdstrm'
+[1/1] [0%                          ] ub8-on.nsys-rep[1/1] [0%                          ] ub8-on.nsys-rep[1/1] [12%                         ] ub8-on.nsys-rep[1/1] [10%                         ] ub8-on.nsys-rep[1/1] [9%                          ] ub8-on.nsys-rep[1/1] [13%                         ] ub8-on.nsys-rep[1/1] [12%                         ] ub8-on.nsys-rep[1/1] [=16%                        ] ub8-on.nsys-rep[1/1] [==21%                       ] ub8-on.nsys-rep[1/1] [====25%                     ] ub8-on.nsys-rep[1/1] [=====29%                    ] ub8-on.nsys-rep[1/1] [=====32%                    ] ub8-on.nsys-rep[1/1] [=======37%                  ] ub8-on.nsys-rep[1/1] [========41%                 ] ub8-on.nsys-rep[1/1] [=========45%                ] ub8-on.nsys-rep[1/1] [==========48%               ] ub8-on.nsys-rep[1/1] [===========52%              ] ub8-on.nsys-rep[1/1] [============56%             ] ub8-on.nsys-rep[1/1] [========================100%] ub8-on.nsys-rep[1/1] [========================100%] ub8-on.nsys-rep
+Generated:
+	/mnt/steam/volta-kernel-bakeoff/results/2026-10-22-fuse-ub8-nsys/ub8-on.nsys-rep

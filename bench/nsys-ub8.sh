@@ -14,12 +14,12 @@ OFF="GGML_CUDA_NO_ADD_NORM_FUSION=1 GGML_CUDA_NO_Q8_CACHE=1 GGML_CUDA_NO_MMVF_SI
 { echo "llama.cpp: $(git -C $SRC log -1 --format='%h %s'); diff sha256 $(git -C $SRC diff | sha256sum | cut -c1-16)"
   echo "libggml-cuda sha256 $(sha256sum $B/libggml-cuda.so.0.* | cut -c1-16)"
   echo "off = $OFF"
-  echo "per side: CUDA_VISIBLE_DEVICES=<V100> [env \$OFF] nsys profile -o ub8-<side> --force-overwrite true -t cuda \\"
+  echo "per side: CUDA_VISIBLE_DEVICES=<V100> [env \$OFF] nsys profile -o ub8-<side> --force-overwrite true -t cuda --cuda-graph-trace=node \\"
   echo "    $B/llama-perplexity -m $M -ngl 99 -fa 1 -f /mnt/steam/gsq-gguf/results/ppl/wiki.test.raw -c 512 --chunks 2 -ub 8"
   echo "  then: nsys stats --report cuda_gpu_kern_sum --format csv --output ub8-<side> ub8-<side>.nsys-rep"; } > $R/COMMAND.txt
 for side in on off; do
   if [ $side = off ]; then E="env $OFF"; else E=env; fi
-  CUDA_VISIBLE_DEVICES=$V100 $E nsys profile -o $R/ub8-$side --force-overwrite true -t cuda \
+  CUDA_VISIBLE_DEVICES=$V100 $E nsys profile -o $R/ub8-$side --force-overwrite true -t cuda --cuda-graph-trace=node \
     $B/llama-perplexity -m $M -ngl 99 -fa 1 -f /mnt/steam/gsq-gguf/results/ppl/wiki.test.raw -c 512 --chunks 2 -ub 8 \
     > $R/ub8-$side.log 2>&1
   nsys stats --report cuda_gpu_kern_sum --format csv --output $R/ub8-$side $R/ub8-$side.nsys-rep > /dev/null 2>&1

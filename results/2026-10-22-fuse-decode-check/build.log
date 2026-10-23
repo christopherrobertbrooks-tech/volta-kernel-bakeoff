@@ -1,0 +1,30 @@
+[  2%] Built target llama-common-base
+[  2%] Built target cpp-httplib
+[  6%] Built target ggml-base
+[ 12%] Built target ggml-cpu
+[ 65%] Built target ggml-cuda
+[ 65%] Built target ggml
+[ 79%] Built target llama
+[ 97%] Built target llama-common
+[ 97%] Built target llama-bench-impl
+[100%] Built target llama-bench
+[  2%] Built target llama-common-base
+[  2%] Built target cpp-httplib
+[  6%] Built target ggml-base
+[ 12%] Built target ggml-cpu
+[ 66%] Built target ggml-cuda
+[ 66%] Built target ggml
+[ 81%] Built target llama
+[100%] Built target llama-common
+[100%] Built target llama-perplexity-impl
+[100%] Built target llama-perplexity
+[  2%] Built target llama-common-base
+[  2%] Built target cpp-httplib
+[  6%] Built target ggml-base
+[ 12%] Built target ggml-cpu
+[ 66%] Built target ggml-cuda
+[ 66%] Built target ggml
+[ 81%] Built target llama
+[100%] Built target llama-common
+[100%] Built target llama-completion-impl
+[100%] Built target llama-completion

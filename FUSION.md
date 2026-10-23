@@ -35,7 +35,7 @@ Since 2026-10-21 each run also:
 Every change so far keeps llama.cpp's arithmetic order, so text and perplexity must come out **identical**, not just
 close.
 
-## Results (tokens per second, median of 10 rounds)
+## Results (tokens per second, medians)
 
 | change | patch | off | on | gain | text | perplexity |
 | --- | --- | ---: | ---: | ---: | --- | --- |
@@ -43,8 +43,12 @@ close.
 | + chains of 2-4 adds (routed + shared experts + residual; 40 more per token) | [apply_add_chain_norm_fusion.py](patches/apply_add_chain_norm_fusion.py) | 88.76 | 90.82 | +2.3% (both) | identical | identical |
 | reuse a q8_1 conversion within a graph run (90 of 291 per token were repeats) | [apply_q8_cache.py](patches/apply_q8_cache.py) | 90.85 | 92.80 | +2.1% | identical | identical |
 | the norm writes its own q8_1 copy (80 more conversions per token skipped) | [apply_q8_fold_norm.py](patches/apply_q8_fold_norm.py) | 92.64 | 93.15 | +0.55% | identical | identical |
+| small f32 multiply -> sigmoid in one call (70 per token: ssm_beta, shared-expert gate) | [apply_mmvf_sigmoid.py](patches/apply_mmvf_sigmoid.py) | 94.94 | 95.99 | +1.14% (19/20) | identical | identical |
 
-The rows above are 10-round medians from four separate A/B runs, each against the previous row's build.
+The first four rows are 10-round medians from separate A/B runs on power saving, each against the previous row's build.
+The sigmoid row ([results/2026-10-22-fuse-mmvf-sigmoid](results/2026-10-22-fuse-mmvf-sigmoid)) is 20 rounds in bench
+mode with the clock sampled (0 of 40 runs flagged), paired against the four-fusion build: +1.14%, fused faster in 19 of
+20 (one round -0.61%). It fuses at one token only, so the `-ub 8` perplexity doesn't exercise it; the greedy text does.
 
 ### One run, stock against all four ([results/2026-10-21-fuse-all-vs-stock](results/2026-10-21-fuse-all-vs-stock))
 
@@ -71,7 +75,7 @@ The paired gain compares each round's two sides with each other, which cancels s
 - **Greedy text** was byte-identical.
 - **Perplexity was identical in all 40 chunks at both batch sizes, to the 4 decimals llama.cpp prints:** 5.8300 with
   llama.cpp's default 512-row batches, and 5.8202 with `-ub 8`. (5.8202 differs from 5.8300 on stock too; small batches
-  add up in a different order.) Matching printed values isn't bit identity; the KL-divergence check below is.
+  add up in a different order.) Matching printed values isn't bit identity; the KL-divergence check below goes further.
 
 **Nsight Systems** confirms where the gain comes from. Each side traced `llama-bench -n 16`, which is 16 tokens plus
 a warmup token, so 17 decode steps; the counts below are totals / 17. The command is in
@@ -91,10 +95,44 @@ wake) between llama.cpp's host steps. Keeping them awake made both sides ~1.7% f
 download gave, and left the fused gain unchanged. From stock on power saving (88.90) to all four in bench mode
 (94.98) is +6.8%. `~/bin/bench-mode on|off|status` on the gateway sets it; it does not survive a reboot.
 
+### Checks after Grok's review (2026-10-22)
+
+**Decode unchanged, with five changes on** ([results/2026-10-22-fuse-decode-check](results/2026-10-22-fuse-decode-check)):
+private llama.cpp `bcc1ffe7d` (the four fusions, the sigmoid fusion and the #11 fix), clean tree. The script rebuilt
+before measuring and logged the binaries' sha256 (`libggml-cuda.so` e88f013c0dfca047). Stock is everything off.
+
+- **Greedy text:** byte-identical.
+- **Perplexity:** all 40 chunks the same at `-ub 512` (5.8300) and `-ub 8` (5.8202).
+- **KL divergence** (`llama-perplexity --kl-divergence`, 4 chunks, the fused side against the stock side's saved log
+  probabilities): mean KLD 0.000000, maximum 0.000061 (`-ub 512`) / 0.000059 (`-ub 8`), RMS of the probability
+  difference 0.001%, same top token 100%. The maximum isn't zero because llama.cpp stores the reference log
+  probabilities in 16 bits: **stock against its own saved run gives exactly the same numbers**. The two complete result
+  tables (46 lines each: every chunk's perplexity to 6 decimals, every KLD and probability statistic) are
+  byte-identical, at both batch sizes. So the fused output matches stock to the full resolution of this method. That is
+  as far as these checks go; no logits were hashed.
+
+**The fold at 8-row batches** ([results/2026-10-22-fuse-ub8-nsys](results/2026-10-22-fuse-ub8-nsys), Nsight Systems on
+`llama-perplexity -ub 8 --chunks 2` with `--cuda-graph-trace=node`; command and `.nsys-rep` traces committed):
+
+| | stock | everything on |
+| --- | ---: | ---: |
+| quantize_q8_1 | 42,635 | 20,705 |
+| mul_mat_vec_q (same work) | 42,635 | 42,635 |
+| add_rms_norm_mul_f32 | 0 | 10,449 (5,160 two-term, 5,160 three-term, 129 plain-norm fold `<1024,0>`) |
+| all kernels | 236,364 | 204,114 |
+
+Per chunk perplexity identical (4.0325, 5.7285). Every one of those norm kernels runs at 1-8 rows, where it writes its
+q8_1 copy, so the fold runs in 8-row batches too.
+
+**Issue #11** ([results/2026-10-22-q8-cache-streams](results/2026-10-22-q8-cache-streams)): the conversion cache now
+works on the main stream only ([apply_q8_cache_mainstream.py](patches/apply_q8_cache_mainstream.py)). The new tests (an
+in-place op, branches, two unsynced back-to-back runs; cache on vs off, with and without `GGML_CUDA_GRAPH_OPT=1`) pass,
+and each fails on a deliberately broken cache.
+
 ### How strong these numbers are
 
-- **The per-row results.** The four per-row runs are 10-round medians on power saving, with no clock log. Their logs
-  name the previous commit, not the patch under test. The patch scripts do apply to stock b11434 and rebuild the
+- **The per-row results.** The first four per-row runs are 10-round medians on power saving, with no clock log. Their
+  logs name the previous commit, not the patch under test. The patch scripts do apply to stock b11434 and rebuild the
   private branch byte for byte, so what was tested is identifiable. The combined run above logs the commit and a diff
   hash, samples the clock, and has 30 rounds.
 - **Outlier rounds.** A few single bench runs come out 1-4 tok/s fast on either side. On power saving that was mostly
@@ -129,4 +167,7 @@ tensors that are nodes or leafs of the running graph. The first version's result
   swap, as issue #3 requires.
 - **CUDA graphs.** Grok's estimate: worth at most ~3% (10.9 ms of GPU time against 11.3 ms per token), if pre-Ampere
   graphs can be enabled in this tree.
-- **Issue #11.** The conversion cache's arena reset is only safe on one stream.
+- **Issue #11.** Fixed on this branch (main stream only); the multi-stream race itself is timing-dependent and not
+  reproduced by any test.
+- **Next fusion candidates.** The router multiply -> top-k (40 pairs per token, 0.6 ms together) and the linear
+  attention's state copies (copy -> gather -> conv, ~0.4 ms).
